@@ -129,7 +129,7 @@ aren't. A thousand clean games means the maths holds.
 python3 -m pytest -q
 ```
 
-Expect `113 passed`. The three checks you specifically asked for are:
+Expect `141 passed`. The three checks you specifically asked for are:
 
 | Where | What it proves |
 |---|---|
@@ -154,8 +154,27 @@ account. Getting one takes about two minutes and is free.
    `123456789:AAHk9x_ThIsIsThEtOkEnYoUwAnT-abcdef`
    **That's the token.** Treat it like a password — anyone with it controls your
    bot. Don't paste it into the group chat.
-6. Optional, nice for players: send `/setdescription` and `/setcommands` to
-   BotFather to give the bot a description and a command menu.
+6. **Give players a command menu** (strongly recommended — it means nobody has
+   to remember commands). Send `/setcommands` to BotFather, pick your bot, then
+   paste this block exactly as-is:
+
+   ```
+   join - Join the game
+   word - Submit or change your secret word
+   mission - Show my current target and word
+   gotcha - Claim you got your target to say your word
+   confirm - Witness someone else's claim
+   withdraw - Take back a claim I just made
+   status - Who is still alive, and the kill feed
+   players - Who has joined
+   help - How this game works
+   ```
+
+   Admin commands are deliberately left out of the menu — they still work, they
+   just don't advertise themselves to all 16 players.
+
+7. Optional: `/setdescription` in BotFather, e.g. *"Word-assassin game. Send
+   /join to play."*
 
 ---
 
@@ -459,8 +478,30 @@ The engine also refuses to be gamed:
   moment is fine.
 * A claim that's gone stale (its hunter has since inherited a new target) is
   voided rather than honoured.
+* A mission that couldn't be delivered is never swallowed: `/begin` names
+  everyone it couldn't reach, and if an *inherited* mission fails to send, the
+  bot says so publicly and tells that player to come and get it with
+  `/mission`.
 
 ---
+
+### Why the bot sends HTML, not Markdown
+
+Telegram parses formatting *before* delivering a message, and rejects a message
+whose markup doesn't parse. A player called `john_gelb` or a word like `*moist*`
+dropped raw into a Markdown message makes it unparseable — so Telegram refuses it
+and **the mission DM is never delivered**. That's the worst failure this game can
+have: someone sitting there all Saturday with no mission.
+
+So every message goes out as HTML with all player-supplied text escaped
+(`gotcha/telegram_bot.py` → `esc()`), which is unambiguous and total. The test
+suite validates *every single message* the bot builds against Telegram's HTML
+rules as it is sent, and specifically replays a list of hostile names and words
+(`john_gelb`, `Tom & Jerry`, `<b>Ana</b>`, `[link](http://x)`, …) through a whole
+game. It also checks the escaping stops a player from choosing a name that
+injects formatting into everyone else's messages.
+
+If you edit the bot: **wrap every name, word and engine message in `esc()`.**
 
 ## Secrecy: what this protects, and what it doesn't
 
@@ -529,6 +570,11 @@ says. Chase them, or `/kick` them.
 the same word, so somebody would have to be handed their own. Ask one of them to
 `/word` something else.
 
+**A name or word with punctuation in it** — fine. Underscores, asterisks,
+ampersands, angle brackets, emoji: `moist_boy`, `Tom & Jerry`, `*shrug*` all work
+and arrive looking exactly as typed. (Words are capped at 40 characters and 3
+words; longer submissions get a polite refusal rather than being silently cut.)
+
 **Someone reported the wrong person** — `/withdraw`, then report again.
 
 **A claim is stuck waiting** — anyone other than the reporter can `/confirm` it;
@@ -550,7 +596,7 @@ everyone re-joins. (Deleting `gotcha.db` also works, but destroys the history.)
 ## Running the checks after any change
 
 ```bash
-python3 -m pytest -q                                  # all 113 tests
+python3 -m pytest -q                                  # all 141 tests
 python3 simulate.py --players 16 --repeat 1000 --quiet # 1000 full games
 ```
 

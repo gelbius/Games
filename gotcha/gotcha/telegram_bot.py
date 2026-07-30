@@ -10,16 +10,31 @@ Privacy rules baked in here:
 * Nothing secret is written to the log. The logging below records *who* did
   *what kind of* action, never a word or a target.
 * There is no admin command that prints the assignment map. It does not exist.
+
+FORMATTING - WHY HTML AND NOT MARKDOWN
+--------------------------------------
+Every message goes out with `parse_mode=HTML`, and every piece of player-supplied
+text (names, words) is passed through `esc()` first.
+
+This is not a style preference. Telegram parses formatting *before* delivering,
+so a player called "john_gelb" or a word like "*moist*" injected raw into a
+Markdown message makes the message unparseable - Telegram rejects it and the
+message is never delivered. Silently losing the message that contains somebody's
+mission is the worst possible failure for this game. HTML escaping (`&`, `<`, `>`
+-> entities) is unambiguous and total, so no name or word can break a message.
+
+Rule for anyone editing this file: dynamic text is ALWAYS wrapped in esc().
 """
 
 from __future__ import annotations
 
+import html
 import logging
 import os
 from typing import List, Optional
 
 from telegram import InlineKeyboardButton, InlineKeyboardMarkup, Update
-from telegram.constants import ChatType
+from telegram.constants import ChatType, ParseMode
 from telegram.error import TelegramError
 from telegram.ext import (
     Application,
@@ -39,18 +54,28 @@ log = logging.getLogger("gotcha.telegram")
 FEED_CHAT_KEY = "feed_chat_id"
 ADMIN_KEY = "claimed_admin_ids"
 
-HELP_PLAYER = """*Gotcha* - the word assassin game.
 
-Everyone submits one word. You get a secret mission: *a person* + *a word*. Get
-that person to say that word in normal conversation, then report it. When it is
-confirmed they are out, and you inherit their mission - their target and their
+def esc(value) -> str:
+    """Make any text safe to drop into a Telegram HTML message.
+
+    Wrap EVERY name, word, game title and engine message in this. See the module
+    docstring for why an unescaped name can stop a mission being delivered.
+    """
+    return html.escape(str(value if value is not None else ""), quote=False)
+
+
+HELP_PLAYER = """<b>Gotcha</b> - the word assassin game.
+
+Everyone submits one word. You get a secret mission: <b>a person</b> + <b>a word</b>.
+Get that person to say that word in normal conversation, then report it. When it
+is confirmed they are out, and you inherit their mission - their target and their
 word become yours. Last player standing wins.
 
-*Your commands* (use them here, in our private chat):
+<b>Your commands</b> (use them here, in our private chat):
 /join - join the game
-/word `<your word>` - submit or change your word (before the game starts)
+/word <code>&lt;your word&gt;</code> - submit or change your word (before the game starts)
 /mission - show my current target and word
-/gotcha `<name>` - claim you got your target to say your word
+/gotcha <code>&lt;name&gt;</code> - claim you got your target to say your word
 /withdraw - take back a claim you just made
 /confirm - witness someone else's claim
 /status - who is still alive, and the kill feed
@@ -58,17 +83,17 @@ word become yours. Last player standing wins.
 /help - this message
 """
 
-HELP_ADMIN = """*Admin commands*
+HELP_ADMIN = """<b>Admin commands</b>
 /lobby - join progress (names only - never words, never assignments)
-/kick `<name>` - remove a no-show (before the game starts)
+/kick <code>&lt;name&gt;</code> - remove a no-show (before the game starts)
 /begin - generate the chain and DM everyone their first mission
 /reroll - regenerate and re-DM (only before the first elimination)
-/setfeed - run this *inside a group* to send announcements there
-/newgame `<name>` - start a fresh game
+/setfeed - run this <b>inside a group</b> to send announcements there
+/newgame <code>&lt;name&gt;</code> - start a fresh game
 /whoami - show your Telegram user id
 
 Note: Telegram reserves /start for "say hello to the bot", so the game is
-started with */begin*.
+started with <b>/begin</b>.
 
 There is deliberately no command that shows you who hunts whom. You are playing
 too - you get exactly the same information as everybody else.
@@ -105,29 +130,31 @@ def _is_admin(update: Update, context: ContextTypes.DEFAULT_TYPE) -> bool:
 
 
 async def _reply(update: Update, text: str, **kwargs) -> None:
+    """Answer whoever sent this update. Text must already be HTML-escaped."""
+    kwargs.setdefault("parse_mode", ParseMode.HTML)
     if update.effective_message:
         await update.effective_message.reply_text(text, **kwargs)
     elif update.callback_query:
         await update.callback_query.edit_message_text(text, **kwargs)
 
 
-def _mission_text(mission) -> str:
+def _mission_text(mission, heading: str = "🎯 <b>Your mission</b>") -> str:
     return (
-        "🎯 *Your mission*\n"
-        f"Target: *{mission.target_name}*\n"
-        f"Word: *{mission.word}*\n\n"
+        f"{heading}\n"
+        f"Target: <b>{esc(mission.target_name)}</b>\n"
+        f"Word: <b>{esc(mission.word)}</b>\n\n"
         "Get them to say it out loud in normal conversation, then send "
-        f"`/gotcha {mission.target_name}`.\n"
-        "_Keep this to yourself._"
+        f"<code>/gotcha {esc(mission.target_name)}</code>.\n"
+        "<i>Keep this to yourself.</i>"
     )
 
 
 async def _dm(context: ContextTypes.DEFAULT_TYPE, telegram_id: Optional[int], text: str) -> bool:
-    """Send a private message; returns False if Telegram would not deliver it."""
+    """Send a private HTML message; False if Telegram would not deliver it."""
     if not telegram_id:
         return False
     try:
-        await context.bot.send_message(chat_id=telegram_id, text=text, parse_mode="Markdown")
+        await context.bot.send_message(chat_id=telegram_id, text=text, parse_mode=ParseMode.HTML)
         return True
     except TelegramError as exc:
         # No secret is logged here - only the fact that a delivery failed.
@@ -135,8 +162,12 @@ async def _dm(context: ContextTypes.DEFAULT_TYPE, telegram_id: Optional[int], te
         return False
 
 
-async def _deliver_mission(context: ContextTypes.DEFAULT_TYPE, mission: MissionDelivery) -> bool:
-    return await _dm(context, mission.telegram_id, _mission_text(mission))
+async def _deliver_mission(
+    context: ContextTypes.DEFAULT_TYPE,
+    mission: MissionDelivery,
+    heading: str = "🎯 <b>Your mission</b>",
+) -> bool:
+    return await _dm(context, mission.telegram_id, _mission_text(mission, heading))
 
 
 async def _announce(context: ContextTypes.DEFAULT_TYPE, game_id: int, text: str) -> None:
@@ -149,7 +180,9 @@ async def _announce(context: ContextTypes.DEFAULT_TYPE, game_id: int, text: str)
     feed_chat = engine.storage.get_setting(game_id, FEED_CHAT_KEY)
     if feed_chat:
         try:
-            await context.bot.send_message(chat_id=int(feed_chat), text=text, parse_mode="Markdown")
+            await context.bot.send_message(
+                chat_id=int(feed_chat), text=text, parse_mode=ParseMode.HTML
+            )
             return
         except TelegramError as exc:
             log.warning("Feed chat delivery failed (%s); falling back to DMs.", exc.__class__.__name__)
@@ -175,9 +208,9 @@ async def cmd_start(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     if not _is_private(update):
         await _reply(update, "Message me privately to play: tap my name, then /join.")
         return
-    await _reply(update, HELP_PLAYER, parse_mode="Markdown")
+    await _reply(update, HELP_PLAYER)
     if _is_admin(update, context):
-        await _reply(update, HELP_ADMIN, parse_mode="Markdown")
+        await _reply(update, HELP_ADMIN)
 
 
 async def cmd_help(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
@@ -196,26 +229,24 @@ async def cmd_join(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     try:
         player = engine.add_player(game_id, name=name.strip()[:40], telegram_id=user.id)
     except GotchaError as exc:
-        await _reply(update, f"⚠️ {exc}")
+        await _reply(update, f"⚠️ {esc(exc)}")
         return
 
     if player.has_word:
         await _reply(
             update,
-            f"You are in as *{player.display_name}* and your word is submitted. "
+            f"You are in as <b>{esc(player.display_name)}</b> and your word is submitted. "
             "Use /word to change it while we wait.",
-            parse_mode="Markdown",
         )
         return
 
     context.user_data["awaiting_word"] = True
     await _reply(
         update,
-        f"Welcome, *{player.display_name}*! 🎉\n\n"
-        "Now send me *one word* - the word other people will be tricked into "
-        "saying. Pick something sayable but not too common (\"pineapple\", not \"the\").\n\n"
+        f"Welcome, <b>{esc(player.display_name)}</b>! 🎉\n\n"
+        "Now send me <b>one word</b> - the word other people will be tricked into "
+        'saying. Pick something sayable but not too common ("pineapple", not "the").\n\n'
         "Just type the word as your next message.",
-        parse_mode="Markdown",
     )
 
 
@@ -224,7 +255,7 @@ async def cmd_word(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
         await _reply(update, "Not in public! Send your word to me in a private chat.")
         return
     if not context.args:
-        await _reply(update, "Usage: `/word pineapple`", parse_mode="Markdown")
+        await _reply(update, "Usage: <code>/word pineapple</code>")
         return
     await _accept_word(update, context, " ".join(context.args))
 
@@ -255,7 +286,7 @@ async def _accept_word(update: Update, context: ContextTypes.DEFAULT_TYPE, word:
     try:
         engine.submit_word(player.id, word)
     except GotchaError as exc:
-        await _reply(update, f"⚠️ {exc}")
+        await _reply(update, f"⚠️ {esc(exc)}")
         return
     context.user_data["awaiting_word"] = False
     status = engine.current_status(player.game_id)
@@ -264,9 +295,8 @@ async def _accept_word(update: Update, context: ContextTypes.DEFAULT_TYPE, word:
         update,
         "Got it - your word is locked in and nobody else can see it. 🤐\n"
         f"{status.ready_count} of {status.joined_count} players are ready.\n\n"
-        "Change it any time before the game starts with `/word something-else`. "
+        "Change it any time before the game starts with <code>/word something-else</code>. "
         "I will DM you your mission when the game begins.",
-        parse_mode="Markdown",
     )
 
 
@@ -286,16 +316,16 @@ async def cmd_mission(update: Update, context: ContextTypes.DEFAULT_TYPE) -> Non
     if mission is None:
         status = engine.current_status(player.game_id)
         if status.game.is_finished:
-            await _reply(update, f"The game is over. 🏆 {status.winner_name} won.")
+            await _reply(update, f"The game is over. 🏆 {esc(status.winner_name)} won.")
         else:
             await _reply(update, "No mission yet - the game has not started. Sit tight.")
         return
-    await _reply(update, _mission_text(mission), parse_mode="Markdown")
+    await _reply(update, _mission_text(mission))
 
 
 async def cmd_gotcha(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     if not _is_private(update):
-        await _reply(update, "Report it to me privately: `/gotcha Name`", parse_mode="Markdown")
+        await _reply(update, "Report it to me privately: <code>/gotcha Name</code>")
         return
     engine = _engine(context)
     player = _me(update, context)
@@ -303,21 +333,21 @@ async def cmd_gotcha(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None
         await _reply(update, "You are not in this game.")
         return
     if not context.args:
-        await _reply(update, "Usage: `/gotcha Ana` (must be your current target)", parse_mode="Markdown")
+        await _reply(update, "Usage: <code>/gotcha Ana</code> (must be your current target)")
         return
 
     try:
         report = engine.report_gotcha(player.game_id, player.id, " ".join(context.args))
     except GotchaError as exc:
-        await _reply(update, f"⚠️ {exc}")
+        await _reply(update, f"⚠️ {esc(exc)}")
         return
 
     await _reply(
         update,
-        f"📣 Claim filed: you got *{report.target_name}* to say *{report.word}*.\n"
+        f"📣 Claim filed: you got <b>{esc(report.target_name)}</b> to say "
+        f"<b>{esc(report.word)}</b>.\n"
         "Now any other player has to confirm it - ask a witness to send /confirm. "
         "Made a mistake? /withdraw.",
-        parse_mode="Markdown",
     )
     # Nudge everybody else that there is something to confirm. This reveals the
     # hunter->victim link, which is about to be public anyway (see README).
@@ -327,8 +357,8 @@ async def cmd_gotcha(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None
         await _dm(
             context,
             other.telegram_id,
-            f"❓ *{report.reporter_name}* claims *{report.target_name}* said "
-            f"*{report.word}*.\nIf you saw or believe it, send /confirm.",
+            f"❓ <b>{esc(report.reporter_name)}</b> claims <b>{esc(report.target_name)}</b> "
+            f"said <b>{esc(report.word)}</b>.\nIf you saw or believe it, send /confirm.",
         )
 
 
@@ -361,6 +391,7 @@ async def cmd_confirm(update: Update, context: ContextTypes.DEFAULT_TYPE) -> Non
         else:
             await _reply(update, "Nothing to confirm right now.")
         return
+    # Button labels are plain text, not HTML - no escaping, and no tags either.
     buttons = [
         [
             InlineKeyboardButton(
@@ -396,31 +427,37 @@ async def on_confirm_button(update: Update, context: ContextTypes.DEFAULT_TYPE) 
         await query.edit_message_text(f"Already handled: {result.announcement}")
         return
 
+    # edit_message_text without a parse mode: plain text, nothing to escape.
     await query.edit_message_text(f"Confirmed. {result.announcement.splitlines()[0]}")
     log.info("gotcha confirmed: player %s eliminated", result.victim_id)
 
     # Public announcement, then the private hand-over of the inherited mission.
-    await _announce(context, player.game_id, result.announcement)
+    await _announce(context, player.game_id, esc(result.announcement))
     await _dm(
         context,
         engine.storage.get_player(result.victim_id).telegram_id,
-        f"☠️ You are out - *{result.hunter_name}* got you. You can still confirm "
+        f"☠️ You are out - <b>{esc(result.hunter_name)}</b> got you. You can still confirm "
         "other people's gotchas with /confirm, and watch /status.",
     )
     if result.new_mission:
-        await _dm(
+        delivered = await _deliver_mission(
             context,
-            result.new_mission.telegram_id,
-            "🎯 *Confirmed - you inherit their mission.*\n"
-            f"New target: *{result.new_mission.target_name}*\n"
-            f"New word: *{result.new_mission.word}*\n\n"
-            "_Keep hunting._",
+            result.new_mission,
+            heading="🎯 <b>Confirmed - you inherit their mission.</b>",
         )
+        if not delivered:
+            # Never leave an undelivered mission silent: tell them to come and get it.
+            await _announce(
+                context,
+                player.game_id,
+                f"⚠️ {esc(result.hunter_name)}, I could not DM you your new mission - "
+                "message me privately and send /mission.",
+            )
     if result.game_over:
         await _announce(
             context,
             player.game_id,
-            f"🏆 *{result.winner_name}* is the last one standing and wins Gotcha!",
+            f"🏆 <b>{esc(result.winner_name)}</b> is the last one standing and wins Gotcha!",
         )
 
 
@@ -428,22 +465,22 @@ async def cmd_status(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None
     engine = _engine(context)
     game_id = _game_id(context)
     status = engine.current_status(game_id)
-    lines: List[str] = [f"*{status.game.name}* - {status.game.state}"]
+    lines: List[str] = [f"<b>{esc(status.game.name)}</b> - {esc(status.game.state)}"]
     if status.game.is_lobby:
         lines.append(f"{status.ready_count} of {status.joined_count} players ready.")
     else:
-        lines.append(f"Alive: *{status.alive_count}* | out: {status.eliminated_count}")
-        alive = ", ".join(p.name for p in status.players if p.alive) or "-"
+        lines.append(f"Alive: <b>{status.alive_count}</b> | out: {status.eliminated_count}")
+        alive = ", ".join(esc(p.name) for p in status.players if p.alive) or "-"
         lines.append(f"Still in: {alive}")
     if status.winner_name:
-        lines.append(f"🏆 Winner: *{status.winner_name}*")
+        lines.append(f"🏆 Winner: <b>{esc(status.winner_name)}</b>")
     if status.pending_count:
         lines.append(f"⏳ {status.pending_count} claim(s) waiting for a witness - /confirm")
     feed = [i for i in status.feed if i.kind in ("elimination", "winner", "started")][:10]
     if feed:
-        lines.append("\n*Feed*")
-        lines += [f"• {item.message}" for item in feed]
-    await _reply(update, "\n".join(lines), parse_mode="Markdown")
+        lines.append("\n<b>Feed</b>")
+        lines += [f"• {esc(item.message)}" for item in feed]
+    await _reply(update, "\n".join(lines))
 
 
 async def cmd_players(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
@@ -455,10 +492,10 @@ async def cmd_players(update: Update, context: ContextTypes.DEFAULT_TYPE) -> Non
     rows = []
     for p in status.players:
         if status.game.is_lobby:
-            rows.append(f"{'✅' if p.ready else '⏳'} {p.name}")
+            rows.append(f"{'✅' if p.ready else '⏳'} {esc(p.name)}")
         else:
-            rows.append(f"{'🙂' if p.alive else '💀'} {p.name}")
-    await _reply(update, f"*Players ({len(rows)})*\n" + "\n".join(rows), parse_mode="Markdown")
+            rows.append(f"{'🙂' if p.alive else '💀'} {esc(p.name)}")
+    await _reply(update, f"<b>Players ({len(rows)})</b>\n" + "\n".join(rows))
 
 
 async def cmd_mylink(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
@@ -476,8 +513,8 @@ async def cmd_mylink(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None
         return
     await _reply(
         update,
-        f"Your private page: {base}/p/{player.token}\nDo not share this link - it *is* your identity.",
-        parse_mode="Markdown",
+        f"Your private page: {esc(base)}/p/{esc(player.token)}\n"
+        "Do not share this link - it <b>is</b> your identity.",
     )
 
 
@@ -497,9 +534,8 @@ async def cmd_whoami(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None
     user = update.effective_user
     await _reply(
         update,
-        f"Your Telegram user id is `{user.id}`.\n"
+        f"Your Telegram user id is <code>{user.id}</code>.\n"
         "Put it in the GOTCHA_ADMIN_IDS setting to become the admin.",
-        parse_mode="Markdown",
     )
 
 
@@ -516,7 +552,7 @@ async def cmd_claimadmin(update: Update, context: ContextTypes.DEFAULT_TYPE) -> 
         return
     engine.storage.set_setting(game_id, ADMIN_KEY, str(update.effective_user.id))
     await _reply(update, "You are the admin of this game. ✅")
-    await _reply(update, HELP_ADMIN, parse_mode="Markdown")
+    await _reply(update, HELP_ADMIN)
 
 
 async def cmd_lobby(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
@@ -526,13 +562,13 @@ async def cmd_lobby(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     status = engine.current_status(_game_id(context))
     waiting = [p.name for p in status.players if not p.ready]
     lines = [
-        f"*Lobby* - {status.ready_count}/{status.joined_count} ready",
-        "Joined: " + (", ".join(p.name for p in status.players) or "nobody yet"),
+        f"<b>Lobby</b> - {status.ready_count}/{status.joined_count} ready",
+        "Joined: " + (", ".join(esc(p.name) for p in status.players) or "nobody yet"),
     ]
     if waiting:
-        lines.append("No word yet: " + ", ".join(waiting))
-    lines.append("_You cannot see anyone's word or assignment - not even as admin._")
-    await _reply(update, "\n".join(lines), parse_mode="Markdown")
+        lines.append("No word yet: " + ", ".join(esc(n) for n in waiting))
+    lines.append("<i>You cannot see anyone's word or assignment - not even as admin.</i>")
+    await _reply(update, "\n".join(lines))
 
 
 async def cmd_kick(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
@@ -541,15 +577,15 @@ async def cmd_kick(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     engine = _engine(context)
     game_id = _game_id(context)
     if not context.args:
-        await _reply(update, "Usage: `/kick Ana`", parse_mode="Markdown")
+        await _reply(update, "Usage: <code>/kick Ana</code>")
         return
     try:
         player = engine.find_player_by_name(game_id, " ".join(context.args))
         name = engine.remove_player(game_id, player.id)
     except GotchaError as exc:
-        await _reply(update, f"⚠️ {exc}")
+        await _reply(update, f"⚠️ {esc(exc)}")
         return
-    await _reply(update, f"Removed *{name}* from the lobby.", parse_mode="Markdown")
+    await _reply(update, f"Removed <b>{esc(name)}</b> from the lobby.")
 
 
 async def cmd_begin(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
@@ -563,7 +599,7 @@ async def cmd_begin(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
         # then let it fall out of scope. It is never printed, stored or logged.
         missions = engine.generate_assignments(game_id)
     except GotchaError as exc:
-        await _reply(update, f"⚠️ Cannot start: {exc}")
+        await _reply(update, f"⚠️ Cannot start: {esc(exc)}")
         return
 
     delivered, failed = 0, []
@@ -577,13 +613,19 @@ async def cmd_begin(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     await _reply(
         update,
         f"Missions generated and DM'd to {delivered} players. ✅\n"
-        + (f"⚠️ Could not reach: {', '.join(failed)} - they must DM me /start first.\n" if failed else "")
-        + "I do not know what to tell you about the assignments, and neither does any screen. Good luck.",
+        + (
+            f"⚠️ Could not reach: {', '.join(esc(n) for n in failed)} - they must DM me "
+            "/start first, then run /reroll.\n"
+            if failed
+            else ""
+        )
+        + "I do not know what to tell you about the assignments, and neither does any "
+        "screen. Good luck.",
     )
     await _announce(
         context,
         game_id,
-        "🎯 *Gotcha has begun!* Everyone has a secret target and a secret word. "
+        "🎯 <b>Gotcha has begun!</b> Everyone has a secret target and a secret word. "
         "Check your DMs, and yell it when you get them.",
     )
 
@@ -612,7 +654,7 @@ async def cmd_newgame(update: Update, context: ContextTypes.DEFAULT_TYPE) -> Non
     engine = _engine(context)
     name = " ".join(context.args) if context.args else "Gotcha"
     game = engine.create_game(name)
-    await _reply(update, f"New game *{game.name}* created. Everybody send /join.", parse_mode="Markdown")
+    await _reply(update, f"New game <b>{esc(game.name)}</b> created. Everybody send /join.")
 
 
 async def on_error(update: object, context: ContextTypes.DEFAULT_TYPE) -> None:
