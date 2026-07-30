@@ -1,0 +1,12 @@
+# The live game database: contains everybody's secret words and missions.
+# Never commit it.
+*.db
+*.db-wal
+*.db-shm
+
+__pycache__/
+*.py[cod]
+.pytest_cache/
+.venv/
+venv/
+.DS_Store
