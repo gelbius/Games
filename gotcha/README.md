@@ -176,6 +176,37 @@ account. Getting one takes about two minutes and is free.
 7. Optional: `/setdescription` in BotFather, e.g. *"Word-assassin game. Send
    /join to play."*
 
+### What else to set up on the Telegram side (and what to leave alone)
+
+Almost nothing. This bot is `@gotchabitch_bot`, and out of the box BotFather's
+defaults are already right for it.
+
+**Do:**
+
+* Paste the `/setcommands` block above, so players get a tappable command menu.
+* Add the bot to your group chat as an **ordinary member** — it does not need to be
+  an admin. (Only exception: if the group is set so that only admins can post,
+  then it needs admin rights to announce eliminations.)
+* Make sure each player **opens a private chat with the bot and presses Start**
+  (sending `/join` does it). Telegram forbids a bot from messaging someone who has
+  never messaged it first — this is the one thing that will bite you, and it's the
+  usual reason `/begin` reports somebody unreachable.
+
+**Leave alone — the defaults are what you want:**
+
+* **Group Privacy: ON** (BotFather → Bot Settings → Group Privacy). With it on, the
+  bot only receives *commands* in the group, not everyone's chatter — which is both
+  more private and all it needs, since `/setfeed` is the only command it ever reads
+  there. Don't turn it off.
+* **Allow Groups: ON** (the default) — otherwise you can't add it to the group.
+* **Inline mode, payments, web app, domain: off/unset.** None are used.
+* **No webhook, no URL, no `/setwebhook`.** The bot long-polls, so there is nothing
+  to point at your machine.
+
+If several bots are in the same group, players should write `/setfeed@gotchabitch_bot`
+so Telegram knows which bot is being addressed. Everything else happens in DMs
+where there's no ambiguity.
+
 ---
 
 ## Step 2 — run the bot
@@ -269,7 +300,7 @@ You never adjudicate anything. Your only job is playing.
 ## Player instructions — paste this into the group chat
 
 > **Gotcha rules**
-> 1. DM **@your_bot_username** privately and send `/join`, then send **one word**
+> 1. DM **`@gotchabitch_bot`** privately and send `/join`, then send **one word**
 >    — something people could plausibly say, but wouldn't say every hour
 >    ("pineapple" ✅, "the" ❌). Nobody ever sees your word, including the organiser.
 > 2. When the game starts you'll get a DM: **a target** and **a word**. Get your
