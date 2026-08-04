@@ -1,0 +1,17 @@
+# The live game database: contains everybody's secret words and missions.
+# Never commit it.
+*.db
+*.db-wal
+*.db-shm
+
+# Tunnel binaries downloaded into the project folder (cloudflared, ngrok)
+cloudflared
+ngrok
+*.tgz
+
+__pycache__/
+*.py[cod]
+.pytest_cache/
+.venv/
+venv/
+.DS_Store
