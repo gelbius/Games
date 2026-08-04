@@ -93,13 +93,17 @@ def _feed_html(status: Status, limit: int = 25) -> str:
 
 
 def _players_html(status: Status) -> str:
+    """The roster. Invite links nobody has opened yet are not people, so they
+    are left out rather than shown as a row of ghostly 'Player #7's."""
     rows = []
-    for p in status.players:
+    for p in [p for p in status.players if p.claimed]:
         if status.game.is_lobby:
             rows.append(f"<li>{'✅' if p.ready else '⏳'} {esc(p.name)}</li>")
         else:
             cls = "" if p.alive else " class='dead'"
             rows.append(f"<li{cls}>{'🙂' if p.alive else '💀'} {esc(p.name)}</li>")
+    if not rows:
+        return "<p class='muted'>Nobody has signed in yet.</p>"
     return "<ul>" + "".join(rows) + "</ul>"
 
 
@@ -119,6 +123,23 @@ def _confirm_html(reports: List[Report], token: str) -> str:
             "<button>✅ Confirm this gotcha</button></form></div>"
         )
     return "".join(blocks)
+
+
+def public_base(request: Request) -> str:
+    """The address to build magic links from.
+
+    GOTCHA_WEB_BASE wins if set. Otherwise we trust the forwarding headers that
+    Cloudflare Tunnel / ngrok add, so opening the admin page *through* the tunnel
+    hands out tunnel links rather than useless http://localhost:8000 ones.
+    """
+    configured = os.environ.get("GOTCHA_WEB_BASE", "").strip().rstrip("/")
+    if configured:
+        return configured
+    host = request.headers.get("x-forwarded-host") or request.headers.get("host")
+    if host:
+        proto = request.headers.get("x-forwarded-proto", request.url.scheme)
+        return f"{proto}://{host}"
+    return str(request.base_url).rstrip("/")
 
 
 def create_app(engine: Optional[GotchaEngine] = None, admin_key: Optional[str] = None) -> FastAPI:
@@ -231,7 +252,11 @@ def create_app(engine: Optional[GotchaEngine] = None, admin_key: Optional[str] =
         parts.append(f"<h2>{status.alive_count} still alive</h2>")
         parts.append(_players_html(status))
         parts.append("<h2>Feed</h2>" + _feed_html(status, limit=10))
-        return page("Your Gotcha page", "".join(parts))
+        # Web players get no push notifications, so once the game is running the
+        # page refreshes itself: a claim to witness, or a mission you inherited,
+        # appears without anyone needing to know to reload. Not during the lobby,
+        # where a refresh would wipe what they are typing.
+        return page("Your Gotcha page", "".join(parts), refresh=30)
 
     def back(token: str, msg: str = "", err: str = "") -> RedirectResponse:
         """POST -> redirect -> GET, carrying a one-line result message."""
@@ -296,7 +321,7 @@ def create_app(engine: Optional[GotchaEngine] = None, admin_key: Optional[str] =
         return secrets.compare_digest(key or "", app.state.admin_key)
 
     @app.get("/admin", response_class=HTMLResponse)
-    def admin_page(key: str = "", msg: str = "", err: str = "", links: str = ""):
+    def admin_page(request: Request, key: str = "", msg: str = "", err: str = ""):
         if not admin_ok(key):
             return page("Admin", "<h1>Admin</h1><p>Add your admin key to the URL: <code>/admin?key=...</code></p>")
         status = engine.current_status(game_id())
@@ -306,11 +331,18 @@ def create_app(engine: Optional[GotchaEngine] = None, admin_key: Optional[str] =
             parts.append(f"<div class='card err'><strong>{esc(err)}</strong></div>")
         elif msg:
             parts.append(f"<div class='card'>{esc(msg)}</div>")
-        if links:
+        # Unclaimed invite links are safe to show: they belong to nobody yet and
+        # carry no mission. The moment somebody signs in with one it disappears
+        # from this page forever - that link is their identity from then on.
+        base = public_base(request)
+        unclaimed = [p for p in engine.storage.players(game_id()) if not p.name]
+        if unclaimed:
+            listed = "<br>".join(f"<code>{esc(base)}/p/{esc(p.token)}</code>" for p in unclaimed)
             parts.append(
-                "<div class='card'><strong>New invite link</strong><br>"
-                f"<code>{esc(links)}</code>"
-                "<p class='muted'>Send it to that one person privately, then forget it.</p></div>"
+                f"<div class='card'><strong>{len(unclaimed)} unclaimed invite link(s)</strong>"
+                f"<p class='muted'>Send one to each person, privately - one link per human. "
+                "They vanish from here as soon as someone signs in with them.</p>"
+                f"{listed}</div>"
             )
         parts.append(
             f"<div class='card'>State: <strong>{esc(status.game.state)}</strong><br>"
@@ -324,7 +356,9 @@ def create_app(engine: Optional[GotchaEngine] = None, admin_key: Optional[str] =
             parts.append(
                 f"<div class='card'><form method='post' action='/admin/invite'>"
                 f"<input type='hidden' name='key' value='{k}'>"
-                "<button class='ghost'>➕ Create an invite link</button></form>"
+                "<label class='muted'>How many invite links do you need?</label>"
+                "<input type='text' name='count' value='16' inputmode='numeric'>"
+                "<button class='ghost'>➕ Create invite links</button></form>"
                 f"<form method='post' action='/admin/kick'>"
                 f"<input type='hidden' name='key' value='{k}'>"
                 "<label class='muted'>Remove a no-show</label>"
@@ -348,22 +382,28 @@ def create_app(engine: Optional[GotchaEngine] = None, admin_key: Optional[str] =
         )
         return page("Gotcha admin", "".join(parts), refresh=None)
 
-    def admin_back(key: str, msg: str = "", err: str = "", links: str = "") -> RedirectResponse:
+    def admin_back(key: str, msg: str = "", err: str = "") -> RedirectResponse:
         return RedirectResponse(
-            "/admin?" + urlencode({k: v for k, v in {"key": key, "msg": msg, "err": err, "links": links}.items() if v}),
+            "/admin?" + urlencode({k: v for k, v in {"key": key, "msg": msg, "err": err}.items() if v}),
             status_code=303,
         )
 
     @app.post("/admin/invite")
-    def admin_invite(request: Request, key: str = Form(...)):
+    def admin_invite(key: str = Form(...), count: str = Form("1")):
         if not admin_ok(key):
             return RedirectResponse("/", status_code=303)
         try:
-            player = engine.add_player(game_id(), name=None)
+            wanted = int(count)
+        except ValueError:
+            return admin_back(key, err="Give me a number, like 16.")
+        if not 1 <= wanted <= 100:
+            return admin_back(key, err="Between 1 and 100 links at a time, please.")
+        try:
+            for _ in range(wanted):
+                engine.add_player(game_id(), name=None)
         except GotchaError as exc:
             return admin_back(key, err=str(exc))
-        base = os.environ.get("GOTCHA_WEB_BASE", str(request.base_url).rstrip("/"))
-        return admin_back(key, links=f"{base}/p/{player.token}")
+        return admin_back(key, msg=f"Created {wanted} invite link(s). Send one to each person.")
 
     @app.post("/admin/kick")
     def admin_kick(key: str = Form(...), name: str = Form("")):

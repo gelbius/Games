@@ -83,6 +83,7 @@ class PublicPlayer:
     name: str
     alive: bool
     ready: bool  # has joined and submitted a word (not *which* word)
+    claimed: bool = True  # False = an invite link nobody has opened yet
 
 
 @dataclass(frozen=True)

@@ -201,3 +201,126 @@ def test_wrong_admin_key_cannot_start_the_game(web, engine):
     game, players = seed_lobby(engine, 4)
     web.post("/admin/begin", data={"key": "wrong"}, follow_redirects=True)
     assert engine.current_status(game.id).game.is_lobby
+
+
+# --- running the web app on its own (no Telegram anywhere) -----------------
+
+
+def test_admin_can_mint_a_batch_of_invite_links(web, engine):
+    engine.create_game("Standalone")
+    body = web.post(
+        "/admin/invite", data={"key": "testkey", "count": "16"}, follow_redirects=True
+    ).text
+    game_id = engine.current_game().id
+    assert len(engine.storage.players(game_id)) == 16
+    assert "16 unclaimed invite link(s)" in body
+    # Every link is on the page, ready to be handed out.
+    for player in engine.storage.players(game_id):
+        assert f"/p/{player.token}" in body
+
+
+def test_a_claimed_link_disappears_from_the_admin_page_forever(web, engine):
+    """The admin hands links out once; after that a link is somebody's identity."""
+    engine.create_game("Standalone")
+    web.post("/admin/invite", data={"key": "testkey", "count": "3"}, follow_redirects=True)
+    game_id = engine.current_game().id
+    first, second, third = engine.storage.players(game_id)
+
+    web.post(
+        f"/p/{first.token}/setup", data={"name": "Ana", "word": "pineapple"}, follow_redirects=True
+    )
+    body = web.get("/admin", params={"key": "testkey"}).text
+    assert first.token not in body, "a signed-in player's magic link must never be shown again"
+    assert second.token in body and third.token in body
+    assert "2 unclaimed invite link(s)" in body
+    assert "Ana" in body  # they appear as a player instead
+
+
+def test_invite_count_is_validated(web, engine):
+    engine.create_game("Standalone")
+    assert "Give me a number" in web.post(
+        "/admin/invite", data={"key": "testkey", "count": "lots"}, follow_redirects=True
+    ).text
+    assert "Between 1 and 100" in web.post(
+        "/admin/invite", data={"key": "testkey", "count": "500"}, follow_redirects=True
+    ).text
+    assert engine.storage.players(engine.current_game().id) == []
+
+
+def test_unclaimed_invites_are_not_shown_as_players(web, engine):
+    engine.create_game("Standalone")
+    web.post("/admin/invite", data={"key": "testkey", "count": "4"}, follow_redirects=True)
+    game_id = engine.current_game().id
+    first = engine.storage.players(game_id)[0]
+    web.post(f"/p/{first.token}/setup", data={"name": "Ana", "word": "pineapple"}, follow_redirects=True)
+
+    feed = web.get("/").text
+    assert "Ana" in feed
+    assert "Player #" not in feed, "an unopened invite is not a person"
+    assert engine.current_status(game_id).joined_count == 1
+
+
+def test_links_are_built_from_the_tunnel_address(web, engine, monkeypatch):
+    """Behind Cloudflare Tunnel the links must be the public URL, not localhost."""
+    monkeypatch.delenv("GOTCHA_WEB_BASE", raising=False)
+    engine.create_game("Standalone")
+    web.post("/admin/invite", data={"key": "testkey", "count": "1"}, follow_redirects=True)
+    body = web.get(
+        "/admin",
+        params={"key": "testkey"},
+        headers={"x-forwarded-host": "gotcha-weekend.trycloudflare.com", "x-forwarded-proto": "https"},
+    ).text
+    assert "https://gotcha-weekend.trycloudflare.com/p/" in body
+    assert "localhost" not in body
+
+    # An explicit setting still wins over the headers.
+    monkeypatch.setenv("GOTCHA_WEB_BASE", "https://gotcha.example.com")
+    body = web.get("/admin", params={"key": "testkey"}).text
+    assert "https://gotcha.example.com/p/" in body
+
+
+def test_a_whole_standalone_game_with_no_telegram_at_all(web, engine):
+    """16 invites -> everyone signs in -> start -> play to a single winner."""
+    engine.create_game("Lake house")
+    web.post("/admin/invite", data={"key": "testkey", "count": "16"}, follow_redirects=True)
+    game_id = engine.current_game().id
+    tokens = [p.token for p in engine.storage.players(game_id)]
+    assert all(p.telegram_id is None for p in engine.storage.players(game_id))
+
+    for i, token in enumerate(tokens):
+        web.post(
+            f"/p/{token}/setup",
+            data={"name": f"Guest{i:02d}", "word": f"word{i:02d}"},
+            follow_redirects=True,
+        )
+    assert engine.current_status(game_id).ready_count == 16
+
+    web.post("/admin/begin", data={"key": "testkey"}, follow_redirects=True)
+    assert engine.current_status(game_id).game.is_active
+
+    guard = 0
+    while not engine.current_status(game_id).game.is_finished:
+        guard += 1
+        assert guard < 40
+        hunter = engine.storage.alive_players(game_id)[0]
+        mission = engine.get_mission(hunter.id)
+        hunter_token = engine.storage.get_player(hunter.id).token
+        web.post(
+            f"/p/{hunter_token}/gotcha",
+            data={"target_name": mission.target_name},
+            follow_redirects=True,
+        )
+        report = engine.pending_reports(game_id)[0]
+        witness = next(p for p in engine.storage.players(game_id) if p.id != hunter.id)
+        web.post(
+            f"/p/{witness.token}/confirm", data={"report_id": report.id}, follow_redirects=True
+        )
+
+    status = engine.current_status(game_id)
+    assert status.alive_count == 1 and status.eliminated_count == 15
+    assert status.winner_name
+    # And the admin page still cannot show a single assignment.
+    admin = web.get("/admin", params={"key": "testkey"}).text
+    for player in engine.storage.players(game_id):
+        assert (player.word or "x") not in admin
+        assert player.token not in admin

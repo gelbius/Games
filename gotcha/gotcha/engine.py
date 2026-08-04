@@ -470,7 +470,13 @@ class GotchaEngine:
         game = self._game(game_id)
         players = self.storage.players(game_id)
         public = [
-            PublicPlayer(id=p.id, name=p.display_name, alive=p.alive, ready=p.has_word)
+            PublicPlayer(
+                id=p.id,
+                name=p.display_name,
+                alive=p.alive,
+                ready=p.has_word,
+                claimed=bool(p.name),
+            )
             for p in players
         ]
         alive = [p for p in public if p.alive]

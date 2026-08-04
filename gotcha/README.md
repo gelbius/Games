@@ -129,7 +129,7 @@ aren't. A thousand clean games means the maths holds.
 python3 -m pytest -q
 ```
 
-Expect `144 passed`. The three checks you specifically asked for are:
+Expect `150 passed`. The three checks you specifically asked for are:
 
 | Where | What it proves |
 |---|---|
@@ -391,75 +391,84 @@ flag; it doesn't exist.
 
 ---
 
-## The website (optional)
+## Running it as a website instead (no Telegram at all)
 
-Same game, same database — a version for anyone who'd rather not use Telegram,
-plus a public feed you can put on a TV.
+The web app is a complete game on its own. Nobody needs a Telegram account, an
+app store, or a phone number — just a link. Players get a private page instead of
+a DM, and everything else is identical, because both interfaces run the same
+engine.
+
+### Start it
+
+Two terminal windows. First, the app itself:
 
 ```bash
-export GOTCHA_ADMIN_KEY='pick-any-long-random-string'
+cd ~/Games/gotcha
+source .venv/bin/activate
+export GOTCHA_DB=web-game.db            # its own game, separate from any bot
+export GOTCHA_ADMIN_KEY='pick-something-long-and-random'
 python3 run_web.py
 ```
 
-```
-  Gotcha web app
-  public feed : http://localhost:8000/
-  admin page  : http://localhost:8000/admin?key=pick-any-long-random-string
-```
-
-Three kinds of page:
-
-* **`/`** — public feed: who's alive, the eliminations. No assignments, ever.
-* **`/p/<long-random-token>`** — one player's private page. This is a **magic
-  link**: no password, holding the link *is* being that player. On the admin page
-  press "Create an invite link" once per player and send each link to that person
-  privately (DM, not the group). They open it, enter their name and word, and
-  later the same link shows their mission and their gotcha button.
-* **`/admin?key=…`** — join progress, kick, start. Public information only.
-
-**Putting it online.** The bot needs nothing, but the website needs a public
-address for people to reach it from their phones. Two easy options, neither
-requiring you to touch your router:
-
-* **Cloudflare Tunnel** (free, more stable — best if the URL should survive the
-  weekend):
-  ```bash
-  # install once: https://developers.cloudflare.com/cloudflare-one/connections/connect-networks/downloads/
-  cloudflared tunnel --url http://localhost:8000
-  ```
-  It prints a `https://something-random.trycloudflare.com` URL. Use that.
-
-* **ngrok** (quickest):
-  ```bash
-  ngrok http 8000
-  ```
-  Also prints an `https://…` URL.
-
-Then tell the two programs what that public address is, so the links they hand
-out are clickable from phones:
+Second, a public address so phones can reach it (install once with
+`brew install cloudflared`):
 
 ```bash
-export GOTCHA_WEB_BASE='https://something-random.trycloudflare.com'
+cloudflared tunnel --url http://localhost:8000
 ```
 
-Restart both after setting it. Now `/mylink` in Telegram gives a player their own
-web page too.
+It prints a URL like `https://red-fox-tuna.trycloudflare.com`. That's your game.
+Open **`https://that-url/admin?key=your-admin-key`** — the links it hands out are
+built from whatever address you reached it on, so going in through the tunnel
+gives tunnel links automatically. Nothing to configure.
 
-**If your players are on Telegram, start the game from Telegram.** Only the bot
-can push a DM. If you press "Generate & send" on the website instead, Telegram
-players won't get a ping — they just send `/mission` to see it. Same for
-confirmations made on the website: they're valid, and the announcement will show
-up in `/status` rather than as a push. Telegram is the primary interface; the
-website is a bonus.
+### Run the game
 
-**Run both at once** by giving them the same database, in two terminals:
+1. **Make the invites.** On the admin page, ask for as many links as you have
+   players (16) and press *Create invite links*. They're listed on the page.
+2. **Send one link to each person, privately.** One link per human. The link *is*
+   their identity — whoever holds it is that player, so it goes in a DM, not the
+   group chat. Once someone signs in with a link it disappears from your admin
+   page for good, so you can never open a playing person's page.
+3. **They open the link**, type their name and their secret word. Watch the
+   count on the admin page climb: `ready: 14/16`.
+4. **Press *Generate & send missions*.** Everyone's page now shows their target
+   and their word. No map is displayed, to you or anyone.
+5. **Playing:** a player presses *Gotcha, <name>!* on their page. Everyone else
+   sees the claim on their own page with a *Confirm this gotcha* button. One
+   press by anyone but the reporter and the victim is out, the announcement hits
+   the public feed, and the hunter's page quietly shows their inherited mission.
+6. **Put `https://that-url/` on a TV** if you like — the public feed shows who's
+   alive and the kill feed, refreshing itself every 20 seconds.
 
-```bash
-GOTCHA_DB=gotcha.db python3 run_bot.py     # terminal 1
-GOTCHA_DB=gotcha.db python3 run_web.py     # terminal 2
-```
+### Things to know
 
----
+* **No notifications.** This is the real difference from Telegram: a web page
+  can't buzz a pocket. Player pages refresh themselves every 30 seconds during
+  play, so a claim to witness or a mission you inherited appears on its own — but
+  nobody gets pinged. Tell people to glance at their page now and then, and to
+  say "gotcha" out loud like they would anyway.
+* **Keep the tunnel and the app running.** Both terminals, all weekend. If
+  `cloudflared` restarts you get a *new* URL and everyone's old link breaks — set
+  `GOTCHA_WEB_BASE` to a permanent address if you have one, or just don't restart
+  it. (The free trycloudflare URLs are disposable by design; a named Cloudflare
+  tunnel gives you a stable one if you want to set that up.)
+* **`ngrok http 8000`** works exactly the same way if you prefer it.
+* **Bookmark, or add to home screen** — iOS Safari → Share → Add to Home Screen
+  turns a player's link into what looks like an app icon.
+* **The link is a password.** Anyone with someone's link can read that person's
+  mission and report gotchas as them. Pages are sent with `no-store` and
+  `no-referrer` so they don't leak through caches or referrer headers, but a
+  screenshot in the group chat would do it. Say that when you hand them out.
+
+### Running both interfaces on one game
+
+Point them at the same database file (`GOTCHA_DB=gotcha.db` for both) and
+Telegram players and web players are in the same game and can hunt each other.
+One caveat worth knowing before you try it: only the bot can push a Telegram
+message, so an elimination confirmed on the *website* will not be announced in
+the Telegram group — it appears on the web feed and in `/status` instead. For a
+single weekend, pick one interface and stick to it.
 
 ## All the settings
 
@@ -685,7 +694,7 @@ everyone re-joins. (Deleting `gotcha.db` also works, but destroys the history.)
 ## Running the checks after any change
 
 ```bash
-python3 -m pytest -q                                  # all 144 tests
+python3 -m pytest -q                                  # all 150 tests
 python3 simulate.py --players 16 --repeat 1000 --quiet # 1000 full games
 ```
 
