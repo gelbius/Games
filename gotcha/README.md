@@ -129,7 +129,7 @@ aren't. A thousand clean games means the maths holds.
 python3 -m pytest -q
 ```
 
-Expect `150 passed`. The three checks you specifically asked for are:
+Expect `153 passed`. The three checks you specifically asked for are:
 
 | Where | What it proves |
 |---|---|
@@ -438,7 +438,11 @@ gives tunnel links automatically. Nothing to configure.
    sees the claim on their own page with a *Confirm this gotcha* button. One
    press by anyone but the reporter and the victim is out, the announcement hits
    the public feed, and the hunter's page quietly shows their inherited mission.
-6. **Put `https://that-url/` on a TV** if you like — the public feed shows who's
+6. **Starting over.** *Start a fresh game* at the bottom of the admin page wipes
+   the slate — new lobby, new invite links. Use it after a practice run, and
+   after the real game finishes. Everyone needs a *new* link; the old ones point
+   at the old game.
+7. **Put `https://that-url/` on a TV** if you like — the public feed shows who's
    alive and the kill feed, refreshing itself every 20 seconds.
 
 ### Things to know
@@ -694,7 +698,7 @@ everyone re-joins. (Deleting `gotcha.db` also works, but destroys the history.)
 ## Running the checks after any change
 
 ```bash
-python3 -m pytest -q                                  # all 150 tests
+python3 -m pytest -q                                  # all 153 tests
 python3 simulate.py --players 16 --repeat 1000 --quiet # 1000 full games
 ```
 

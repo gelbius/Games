@@ -324,3 +324,42 @@ def test_a_whole_standalone_game_with_no_telegram_at_all(web, engine):
     for player in engine.storage.players(game_id):
         assert (player.word or "x") not in admin
         assert player.token not in admin
+
+
+def test_admin_can_start_a_fresh_game_after_one_finishes(web, engine):
+    """A finished game is a dead end without this - nothing else can restart it."""
+    game, players = seed_lobby(engine, 2)
+    engine.generate_assignments(game.id)
+    hunter = engine.storage.alive_players(game.id)[0]
+    mission = engine.get_mission(hunter.id)
+    report = engine.report_gotcha(game.id, hunter.id, mission.target_name)
+    engine.confirm_gotcha(game.id, report.id, mission.target_id)
+    assert engine.current_status(game.id).game.is_finished
+
+    body = web.get("/admin", params={"key": "testkey"}).text
+    assert "Start a fresh game" in body and "That game is over" in body
+
+    body = web.post(
+        "/admin/newgame", data={"key": "testkey", "name": "Round 2"}, follow_redirects=True
+    ).text
+    assert "Round 2" in body
+    fresh = engine.current_game()
+    assert fresh.id != game.id and fresh.is_lobby
+    assert engine.storage.players(fresh.id) == []
+
+    # And the new game is playable: invites work again.
+    web.post("/admin/invite", data={"key": "testkey", "count": "2"}, follow_redirects=True)
+    assert len(engine.storage.players(engine.current_game().id)) == 2
+
+
+def test_starting_a_fresh_game_needs_the_admin_key(web, engine):
+    game, players = seed_lobby(engine, 3)
+    web.post("/admin/newgame", data={"key": "nope", "name": "Hijack"}, follow_redirects=True)
+    assert engine.current_game().id == game.id
+
+
+def test_admin_warns_before_abandoning_a_running_game(web, engine):
+    game, players = seed_lobby(engine, 4)
+    engine.generate_assignments(game.id)
+    body = web.get("/admin", params={"key": "testkey"}).text
+    assert "A game is in progress" in body and "abandons it" in body

@@ -376,6 +376,26 @@ def create_app(engine: Optional[GotchaEngine] = None, admin_key: Optional[str] =
                 "</form></div>"
             )
         parts.append("<h2>Feed</h2>" + _feed_html(status))
+
+        # Without this the app would sit on a finished game forever: a finished
+        # game cannot be restarted, and there is nowhere else to make a new one.
+        if status.game.is_finished:
+            new_game_note = "That game is over. Start the next one:"
+        elif status.game.is_lobby:
+            new_game_note = "Starting over clears this lobby and voids every invite link already sent."
+        else:
+            new_game_note = (
+                "⚠️ A game is in progress. Starting a new one abandons it and voids "
+                "every link already sent."
+            )
+        parts.append(
+            f"<div class='card'><p class='muted'>{esc(new_game_note)}</p>"
+            "<form method='post' action='/admin/newgame'>"
+            f"<input type='hidden' name='key' value='{k}'>"
+            "<label class='muted'>Name for the new game</label>"
+            "<input type='text' name='name' placeholder='Gotcha' maxlength='60'>"
+            "<button class='ghost'>🆕 Start a fresh game</button></form></div>"
+        )
         parts.append(
             "<footer>This page cannot show you who hunts whom or who holds which word. "
             "No page can - the engine has no such call.</footer>"
@@ -415,6 +435,17 @@ def create_app(engine: Optional[GotchaEngine] = None, admin_key: Optional[str] =
         except GotchaError as exc:
             return admin_back(key, err=str(exc))
         return admin_back(key, msg=f"Removed {removed}.")
+
+    @app.post("/admin/newgame")
+    def admin_newgame(key: str = Form(...), name: str = Form("")):
+        if not admin_ok(key):
+            return RedirectResponse("/", status_code=303)
+        game = engine.create_game((name or "Gotcha").strip()[:60])
+        return admin_back(
+            key,
+            msg=f"New game '{game.name}' started. Everyone needs a fresh invite link - "
+            "the old links belong to the previous game.",
+        )
 
     @app.post("/admin/begin")
     def admin_begin(key: str = Form(...)):
