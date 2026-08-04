@@ -238,6 +238,43 @@ the bot with `export GOTCHA_ADMIN_IDS='your-number-from-whoami'`.)
 `gotcha.db` next to the scripts, so starting it again continues exactly where you
 left off — missions, eliminations and all. Don't delete that file mid-game.
 
+### Keeping it alive all weekend
+
+The bot only works while this program is running on your machine. Telegram does
+not run it for you — it just holds messages until your bot asks for them.
+
+**Stop the Mac going to sleep.** A sleeping laptop is a stopped bot. Start it
+like this instead, which keeps the machine awake for exactly as long as the bot
+is running:
+
+```bash
+caffeinate -i python3 run_bot.py
+```
+
+Also: leave it plugged in, and leave the lid open (shutting the lid sleeps a Mac
+regardless of `caffeinate`, unless it's driving an external display).
+
+**If it does stop anyway** — sleep, a reboot, Wi-Fi dropping, a closed terminal —
+nothing is lost. Messages people sent meanwhile are queued by Telegram for about
+24 hours and get processed when you start the bot again:
+
+```bash
+cd ~/Games/gotcha
+source .venv/bin/activate
+export GOTCHA_BOT_TOKEN='...'
+caffeinate -i python3 run_bot.py
+```
+
+A `/gotcha` sent at 2am while the lid was shut will be handled when you reopen it.
+Re-sent commands are harmless: reports and confirmations are idempotent, so
+nobody gets eliminated twice, and a claim that went stale in the meantime is
+voided rather than honoured.
+
+**Want it to survive the laptop entirely?** Anything that can run Python and keep
+a network connection works — a Raspberry Pi on the shelf, or a cheap VPS. Copy the
+folder, install the requirements, run the same command. Move `gotcha.db` with it
+to carry the game across; leave it behind to start fresh.
+
 ---
 
 ## Step 3 — run the weekend

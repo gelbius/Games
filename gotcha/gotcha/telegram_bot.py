@@ -732,7 +732,14 @@ def main() -> None:
     app = build_application(token, engine, admin_ids)
     log.info("Gotcha bot starting (db=%s, admins=%s)", db_path, sorted(admin_ids) or "unclaimed")
     # Long polling: no inbound ports, no public URL needed.
-    app.run_polling(drop_pending_updates=True)
+    #
+    # drop_pending_updates=False matters for a weekend game run off a laptop.
+    # Telegram queues messages sent while the bot is down (for ~24h) and hands
+    # them over on reconnect. Dropping them would mean a /gotcha sent at 2am,
+    # while the lid was shut, silently never happened. Replaying them is safe:
+    # reports and confirmations are idempotent, and a claim that has gone stale
+    # in the meantime is voided rather than honoured.
+    app.run_polling(drop_pending_updates=False)
 
 
 if __name__ == "__main__":
