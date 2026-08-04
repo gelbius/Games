@@ -4,6 +4,11 @@
 *.db-wal
 *.db-shm
 
+# Tunnel binaries downloaded into the project folder (cloudflared, ngrok)
+cloudflared
+ngrok
+*.tgz
+
 __pycache__/
 *.py[cod]
 .pytest_cache/
