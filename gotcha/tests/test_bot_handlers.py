@@ -629,3 +629,49 @@ def test_status_in_a_group_is_public_information_only(harness):
         assert player.word not in text
         assert player.mission_word not in text
     assert "Alive" in text
+
+
+# ---------------------------------------------------------------------------
+# operational errors: readable, not a wall of traceback
+# ---------------------------------------------------------------------------
+
+
+class ErrorContext(FakeContext):
+    def __init__(self, harness, error):
+        super().__init__(harness)
+        self.error = error
+
+
+def test_two_running_copies_gets_one_readable_line(harness, caplog):
+    """Telegram allows one connection per token; say so in plain language."""
+    from telegram.error import Conflict
+
+    with caplog.at_level("ERROR"):
+        asyncio.run(bot.on_error(None, ErrorContext(harness, Conflict("terminated by other"))))
+    message = caplog.records[-1].getMessage()
+    assert "only allows one" in message
+    assert "pkill -f run_bot.py" in message
+    assert "Nothing is lost" in message
+    assert caplog.records[-1].exc_info is None, "no traceback for a config problem"
+
+    # It says the long version once, then stops repeating itself.
+    caplog.clear()
+    with caplog.at_level("ERROR"):
+        asyncio.run(bot.on_error(None, ErrorContext(harness, Conflict("again"))))
+    assert "Still fighting" in caplog.records[-1].getMessage()
+
+
+def test_a_network_blip_is_a_warning_not_a_crash(harness, caplog):
+    from telegram.error import NetworkError
+
+    with caplog.at_level("WARNING"):
+        asyncio.run(bot.on_error(None, ErrorContext(harness, NetworkError("wifi died"))))
+    message = caplog.records[-1].getMessage()
+    assert "retrying automatically" in message
+    assert caplog.records[-1].levelname == "WARNING"
+
+
+def test_a_real_bug_still_gets_its_traceback(harness, caplog):
+    with caplog.at_level("ERROR"):
+        asyncio.run(bot.on_error(None, ErrorContext(harness, ValueError("a real bug"))))
+    assert caplog.records[-1].exc_info is not None

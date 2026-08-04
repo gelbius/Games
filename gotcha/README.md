@@ -129,7 +129,7 @@ aren't. A thousand clean games means the maths holds.
 python3 -m pytest -q
 ```
 
-Expect `141 passed`. The three checks you specifically asked for are:
+Expect `144 passed`. The three checks you specifically asked for are:
 
 | Where | What it proves |
 |---|---|
@@ -653,8 +653,29 @@ joined on Telegram. Otherwise, and only in the lobby, kick them and issue a new
 invite. There's no way to look up an existing player's link from the admin page
 by design — that link would let you read their mission.
 
+**`Conflict: terminated by other getUpdates request`** — two copies of the bot
+are running with the same token, and Telegram only allows one. Usually an older
+terminal window you forgot about. Stop everything and start one:
+
+```bash
+pkill -f run_bot.py     # stops every running copy
+pgrep -fl run_bot.py    # no output = all clear
+```
+
+Then start it again as usual. Nothing is lost.
+
+**`ModuleNotFoundError: No module named 'telegram'`** — the virtual environment
+isn't active in this terminal window. Your prompt should start with `(.venv)`.
+Run `source .venv/bin/activate` first. (`which python3` tells you: inside the
+venv the path ends in `.venv/bin/python3`.)
+
 **The bot crashed / the laptop rebooted.** Just start it again:
 `python3 run_bot.py`. Nothing is lost; the game is in `gotcha.db`.
+
+**Your token leaked** (pasted into a chat, a screenshot, a commit). Revoke it:
+BotFather → `/mybots` → your bot → API Token → **Revoke current token**. You get
+a new one instantly and the old one dies. Re-`export` the new token and restart.
+The game itself is untouched — `gotcha.db` doesn't care which token is used.
 
 **You want to start over.** `/newgame Round 2` in Telegram makes a fresh game and
 everyone re-joins. (Deleting `gotcha.db` also works, but destroys the history.)
@@ -664,7 +685,7 @@ everyone re-joins. (Deleting `gotcha.db` also works, but destroys the history.)
 ## Running the checks after any change
 
 ```bash
-python3 -m pytest -q                                  # all 141 tests
+python3 -m pytest -q                                  # all 144 tests
 python3 simulate.py --players 16 --repeat 1000 --quiet # 1000 full games
 ```
 

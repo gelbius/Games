@@ -35,7 +35,7 @@ from typing import List, Optional
 
 from telegram import InlineKeyboardButton, InlineKeyboardMarkup, Update
 from telegram.constants import ChatType, ParseMode
-from telegram.error import TelegramError
+from telegram.error import Conflict, NetworkError, TelegramError
 from telegram.ext import (
     Application,
     CallbackQueryHandler,
@@ -658,7 +658,37 @@ async def cmd_newgame(update: Update, context: ContextTypes.DEFAULT_TYPE) -> Non
 
 
 async def on_error(update: object, context: ContextTypes.DEFAULT_TYPE) -> None:
-    log.exception("Unhandled error in handler", exc_info=context.error)
+    """Turn the two expected operational errors into one readable line each.
+
+    Both of these are things that just *happen* while running a bot off a
+    laptop, and neither is a bug in the game - so they get an explanation and a
+    fix, not a 40-line traceback repeated every six seconds.
+    """
+    error = context.error
+
+    # Two copies of the bot running with the same token. Telegram allows one.
+    if isinstance(error, Conflict):
+        if not context.application.bot_data.get("warned_about_conflict"):
+            context.application.bot_data["warned_about_conflict"] = True
+            log.error(
+                "Another copy of this bot is already running with the same token, "
+                "and Telegram only allows one at a time. Stop the other one - in its "
+                "terminal press Ctrl-C, or run 'pkill -f run_bot.py' - then start this "
+                "again. (Nothing is lost: the game lives in the database file.)"
+            )
+        else:
+            log.error("Still fighting another running copy of the bot - stop one of them.")
+        return
+
+    # Wi-Fi blip, laptop waking up, Telegram having a moment. Self-healing.
+    if isinstance(error, NetworkError):
+        log.warning(
+            "Network problem talking to Telegram (%s) - retrying automatically.",
+            error.__class__.__name__,
+        )
+        return
+
+    log.exception("Unhandled error in handler", exc_info=error)
     if isinstance(update, Update) and update.effective_message:
         try:
             await update.effective_message.reply_text("Something went wrong - try again.")
