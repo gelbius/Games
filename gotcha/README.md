@@ -129,12 +129,13 @@ aren't. A thousand clean games means the maths holds.
 python3 -m pytest -q
 ```
 
-Expect `153 passed`. The three checks you specifically asked for are:
+Expect `192 passed`. The three checks you specifically asked for are:
 
 | Where | What it proves |
 |---|---|
 | `tests/test_assignments.py::test_targets_form_a_single_cycle` | targets are one single loop, for every player count **2 to 30**, 200 fresh draws each |
 | `tests/test_assignments.py::test_words_are_always_a_derangement` | every player gets exactly one word and **never their own** |
+| `tests/test_assignments.py::test_nobody_is_sent_to_extract_their_targets_own_word` | nobody is told to make their target say **that target's own word** |
 | `tests/test_full_game.py` | a full simulated game **always** ends with exactly one winner (including 200 back-to-back 16-player games) |
 
 ---
@@ -516,12 +517,32 @@ to "fix" it:
 j = rng.randrange(i)          # 0 ≤ j < i  — strictly less than i
 ```
 
-The words are dealt separately, because they don't need loop structure — they
-just need to be a *derangement*: everybody gets exactly one word, nobody gets
-their own. (Judged by the text, so if two people submit "banana" neither of them
-receives "banana".) A word that more than half the players submitted makes this
-impossible, so the program refuses with a clear message and asks someone to
-change theirs.
+The words are dealt separately, because they don't need loop structure. They do
+need to obey two bans:
+
+* **never your own word** — obvious;
+* **never your target's own word.** Being told "get Mignon to say *margarita*"
+  when *margarita* is the word Mignon herself submitted is a free kill, and it
+  quietly tells you something about her you weren't meant to know.
+
+Both are judged by the text, so if two people submit "banana" neither of them
+receives "banana", and neither is sent to extract "banana" from the other.
+
+That second ban has a cost worth knowing: a word owned by several players can't
+go to any of them, *nor to anyone hunting one of them*, so a shared word blocks
+roughly twice its own number of players. In practice **about a third of the group
+can share a word** before it becomes impossible — where the own-word rule alone
+tolerated half. If that happens the program says exactly which word is the
+problem and asks for one person to change it, rather than starting a game with a
+free kill in it.
+
+Whether a deal exists also depends on the chain that was drawn, so the engine
+tries up to 50 fresh chains before concluding a word list is genuinely hopeless.
+When simple shuffling runs out of luck it solves the deal properly, as a matching
+problem, so it only ever gives up when no legal deal exists at all.
+
+With 2 players the ban is dropped — the only two words in the game are the two
+banned ones, and by then the words in play were inherited long ago anyway.
 
 Then, before a single message goes out, `verify_assignments()` re-checks
 everything: no self-targets, one single loop, no own words. It runs twice — once
@@ -698,7 +719,7 @@ everyone re-joins. (Deleting `gotcha.db` also works, but destroys the history.)
 ## Running the checks after any change
 
 ```bash
-python3 -m pytest -q                                  # all 153 tests
+python3 -m pytest -q                                  # all 192 tests
 python3 simulate.py --players 16 --repeat 1000 --quiet # 1000 full games
 ```
 

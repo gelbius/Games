@@ -8,16 +8,20 @@ Two independent things get generated when a game starts:
    See `build_target_cycle` for why, at length.
 
 2. THE WORD ASSIGNMENT — which submitted word each player must extract.
-   This only has to be a "derangement": everybody gets exactly one word and
-   nobody gets their own. Words do not need any loop structure; they just ride
-   along with the mission and get inherited together with the target.
+   Everybody gets exactly one word, subject to two bans:
+     * never your OWN word;
+     * never your TARGET's own word — being told to make Mignon say the very
+       word Mignon submitted is a free kill, and it tells you something about
+       her you were not meant to know.
+   Words carry no loop structure; they ride along with the mission and get
+   inherited together with the target.
 """
 
 from __future__ import annotations
 
 import random
 from collections import Counter
-from typing import Dict, Hashable, List, Sequence, TypeVar
+from typing import Dict, Hashable, List, Optional, Sequence, TypeVar
 
 T = TypeVar("T", bound=Hashable)
 
@@ -27,6 +31,16 @@ class AssignmentError(Exception):
 
     This is deliberately loud: we would rather refuse to start the game than
     deliver a broken chain that dead-ends halfway through the weekend.
+    """
+
+
+class NoLegalWordDeal(AssignmentError):
+    """No way to deal the words that satisfies both bans *for this chain*.
+
+    Worth its own type because it depends on the target cycle we happened to
+    draw, not only on the words: whether a word can be dealt depends on who is
+    hunting whom. The engine reacts by drawing a fresh chain and trying again,
+    and only gives up if the words are hopeless whatever the chain.
     """
 
 
@@ -128,20 +142,79 @@ def _norm(word: str) -> str:
     return " ".join(word.strip().lower().split())
 
 
+def _forbidden_texts(
+    player_ids: Sequence[T],
+    own_words: Dict[T, str],
+    targets: Optional[Dict[T, T]],
+) -> Dict[T, set]:
+    """Which word *texts* each player must not be given.
+
+    Always their own. Also their target's, except in a 2-player game where that
+    is impossible - the only two words in existence are those two, so the rule
+    is dropped rather than making the game unstartable. By then the endgame has
+    arrived anyway and the words in play were inherited long ago.
+    """
+    banned = {pid: {_norm(own_words[pid])} for pid in player_ids}
+    if targets and len(player_ids) >= 3:
+        for pid in player_ids:
+            banned[pid].add(_norm(own_words[targets[pid]]))
+    return banned
+
+
+def _match_words_to_players(
+    player_ids: Sequence[T],
+    words: List[str],
+    banned: Dict[T, set],
+    rng: random.Random,
+) -> Optional[Dict[T, str]]:
+    """Find one legal deal, or None if no legal deal exists.
+
+    A straight augmenting-path matching over "which of the n word slips may this
+    player be handed". Random shuffling keeps successive games from looking
+    alike; the matching itself guarantees we only give up when the deal really
+    is impossible, rather than when we were unlucky.
+    """
+    allowed = {
+        pid: [k for k in range(len(words)) if _norm(words[k]) not in banned[pid]]
+        for pid in player_ids
+    }
+    for slips in allowed.values():
+        rng.shuffle(slips)
+    order = list(player_ids)
+    rng.shuffle(order)
+
+    holder: Dict[int, T] = {}  # word slip -> the player holding it
+
+    def assign(pid: T, tried: set) -> bool:
+        for slip in allowed[pid]:
+            if slip in tried:
+                continue
+            tried.add(slip)
+            if slip not in holder or assign(holder[slip], tried):
+                holder[slip] = pid
+                return True
+        return False
+
+    for pid in order:
+        if not assign(pid, set()):
+            return None
+    return {pid: words[slip] for slip, pid in holder.items()}
+
+
 def build_word_derangement(
     player_ids: Sequence[T],
     own_words: Dict[T, str],
     rng: random.Random,
+    targets: Optional[Dict[T, T]] = None,
 ) -> Dict[T, str]:
-    """Deal the submitted words out so nobody receives their own word.
+    """Deal the submitted words out under both bans (see `_forbidden_texts`).
 
-    "Own word" is judged by text, not by who typed it: if Ana and Ben both
-    submitted "banana", handing Ana Ben's copy of "banana" would still feel like
-    getting her own word back, so we forbid it.
+    Words are compared by text, not by who typed them: if Ana and Ben both
+    submitted "banana", handing Ana Ben's copy would still feel like getting her
+    own word back, and would still be a free kill against Ben.
 
-    That means the deal is impossible when one word is too popular - if 9 of 16
-    players submit "moist", at least one of them has to receive "moist". We
-    detect that up front and say so clearly (someone just picks a new word).
+    Pass `targets` to enforce the second ban. Without it only the own-word ban
+    applies, which is all the maths needs — the target ban is a playability rule.
     """
     ids = list(player_ids)
     n = len(ids)
@@ -161,34 +234,25 @@ def build_word_derangement(
             "be given their own word. Ask someone to change theirs."
         )
 
-    # Fast path: shuffle the pile of words and check. For real games this
-    # succeeds on the first or second try.
+    banned = _forbidden_texts(ids, own_words, targets)
+
+    # Fast path: shuffle the pile and check. Usually succeeds within a few tries.
     for _ in range(500):
         shuffled = words[:]
         rng.shuffle(shuffled)
-        if all(_norm(shuffled[k]) != _norm(words[k]) for k in range(n)):
+        if all(_norm(shuffled[k]) not in banned[ids[k]] for k in range(n)):
             return dict(zip(ids, shuffled))
 
-    # Slow path, guaranteed to work whenever the feasibility check above passed.
-    # Group players by the word they submitted, biggest group first, then hand
-    # out the words rotated by the size of the biggest group. A rotation of at
-    # least the largest block length can never land a block back on itself.
-    groups: Dict[str, List[int]] = {}
-    for k, word in enumerate(words):
-        groups.setdefault(_norm(word), []).append(k)
-    ordered_groups = sorted(groups.values(), key=lambda g: (-len(g), rng.random()))
-    for group in ordered_groups:
-        rng.shuffle(group)
-
-    order = [k for group in ordered_groups for k in group]
-    shift = len(ordered_groups[0])
-    result = {}
-    for position, k in enumerate(order):
-        donor = order[(position + shift) % n]
-        result[ids[k]] = words[donor]
-    if any(_norm(result[ids[k]]) == _norm(words[k]) for k in range(n)):  # pragma: no cover
-        raise AssignmentError("Internal error: could not deal words without a self-match.")
-    return result
+    # Slow path: solve it properly rather than keep rolling dice.
+    matched = _match_words_to_players(ids, words, banned, rng)
+    if matched is None:
+        raise NoLegalWordDeal(
+            f"No way to deal these words without giving somebody their own word or "
+            f"their target's. Too many players chose {hottest!r} ({hottest_count} of "
+            f"{n}) - with this rule a word can be shared by at most about a third of "
+            "the group. Ask one of them to pick something else, then start again."
+        )
+    return matched
 
 
 def is_derangement(own_words: Dict[T, str], assigned: Dict[T, str]) -> bool:
@@ -196,6 +260,19 @@ def is_derangement(own_words: Dict[T, str], assigned: Dict[T, str]) -> bool:
     if set(own_words) != set(assigned):
         return False
     return all(_norm(assigned[pid]) != _norm(own_words[pid]) for pid in own_words)
+
+
+def nobody_hunts_their_targets_own_word(
+    targets: Dict[T, T],
+    own_words: Dict[T, str],
+    assigned: Dict[T, str],
+) -> bool:
+    """True if no player was told to extract the word their target submitted."""
+    if len(targets) < 3:  # impossible to satisfy with 2 players; see _forbidden_texts
+        return True
+    return all(
+        _norm(assigned[pid]) != _norm(own_words[targets[pid]]) for pid in targets
+    )
 
 
 # ---------------------------------------------------------------------------
@@ -225,4 +302,9 @@ def verify_assignments(
     if not is_derangement(own_words, assigned_words):
         raise AssignmentError(
             "Word assignment is not a valid derangement (somebody got their own word)."
+        )
+    if not nobody_hunts_their_targets_own_word(targets, own_words, assigned_words):
+        raise AssignmentError(
+            "Somebody was told to make their target say that target's own word - "
+            "a free kill, and a leak. Refusing to start."
         )

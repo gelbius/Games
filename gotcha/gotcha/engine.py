@@ -21,6 +21,7 @@ from typing import Dict, List, Optional
 
 from .assignments import (
     AssignmentError,
+    NoLegalWordDeal,
     build_target_cycle,
     build_word_derangement,
     verify_assignments,
@@ -189,10 +190,25 @@ class GotchaEngine:
         own_words: Dict[int, str] = {p.id: p.word or "" for p in players}
 
         # 1. who hunts whom - ONE loop through everybody (Sattolo, see assignments.py)
-        targets = build_target_cycle(ids, rng)
-        # 2. which word each player must extract - a derangement, no own words
-        words = build_word_derangement(ids, own_words, rng)
-        # 3. refuse to continue unless both properties hold
+        # 2. which word each player must extract. Never their own, and never
+        #    their target's own word either: being sent to make Mignon say the
+        #    word Mignon submitted is a free kill and tells you too much.
+        #
+        # Whether the words CAN be dealt depends on the chain we drew, so an
+        # awkward chain is worth re-drawing rather than refusing the game over.
+        # Only when no chain admits a legal deal is the word list truly hopeless.
+        last_error: Optional[NoLegalWordDeal] = None
+        for _ in range(50):
+            targets = build_target_cycle(ids, rng)
+            try:
+                words = build_word_derangement(ids, own_words, rng, targets=targets)
+                break
+            except NoLegalWordDeal as exc:
+                last_error = exc
+        else:
+            raise last_error  # type: ignore[misc]
+
+        # 3. refuse to continue unless every property holds
         verify_assignments(targets, own_words, words)
 
         self.storage.write_missions({pid: (targets[pid], words[pid]) for pid in ids})

@@ -7,10 +7,12 @@ import pytest
 
 from gotcha.assignments import (
     AssignmentError,
+    NoLegalWordDeal,
     build_target_cycle,
     build_word_derangement,
     is_derangement,
     is_single_cycle,
+    nobody_hunts_their_targets_own_word,
     sattolo_cycle,
     verify_assignments,
 )
@@ -151,5 +153,105 @@ def test_verify_accepts_a_good_assignment():
     ids = list(range(16))
     own = {i: f"word{i}" for i in ids}
     targets = build_target_cycle(ids, rng)
-    words = build_word_derangement(ids, own, rng)
+    words = build_word_derangement(ids, own, rng, targets=targets)
     verify_assignments(targets, own, words)  # must not raise
+
+
+# --- requirement 3: never your target's own word ---------------------------
+
+
+@pytest.mark.parametrize("n", range(3, 31))
+def test_nobody_is_sent_to_extract_their_targets_own_word(n):
+    """The mission "make Mignon say the word Mignon chose" is a free kill."""
+    rng = random.Random(500 + n)
+    for _ in range(50):
+        ids = list(range(n))
+        own = {i: f"word{i}" for i in ids}
+        targets = build_target_cycle(ids, rng)
+        assigned = build_word_derangement(ids, own, rng, targets=targets)
+        assert is_derangement(own, assigned)
+        assert nobody_hunts_their_targets_own_word(targets, own, assigned)
+        verify_assignments(targets, own, assigned)
+
+
+def test_the_rule_holds_with_duplicate_words():
+    """Judged by text, so a duplicate of the target's word is banned too."""
+    rng = random.Random(9)
+    ids = list(range(10))
+    own = {0: "banana", 1: "BANANA", 2: " banana ", 3: "cat", 4: "cat",
+           5: "dog", 6: "emu", 7: "fig", 8: "gnu", 9: "hen"}
+    for _ in range(60):
+        targets = build_target_cycle(ids, rng)
+        assigned = build_word_derangement(ids, own, rng, targets=targets)
+        assert is_derangement(own, assigned)
+        assert nobody_hunts_their_targets_own_word(targets, own, assigned)
+
+
+def test_a_quarter_of_the_group_sharing_a_word_still_works():
+    """Luck runs out here, so the matching has to do the work."""
+    rng = random.Random(11)
+    n = 16
+    ids = list(range(n))
+    own = {i: ("moist" if i < 4 else f"word{i}") for i in ids}
+    solved = 0
+    for _ in range(30):
+        targets = build_target_cycle(ids, rng)
+        try:
+            assigned = build_word_derangement(ids, own, rng, targets=targets)
+        except NoLegalWordDeal:
+            continue  # this particular chain has no deal; the engine redraws
+        verify_assignments(targets, own, assigned)
+        solved += 1
+    assert solved > 20, "a quarter-share should almost always be dealable"
+
+
+def test_half_the_group_sharing_a_word_is_now_impossible():
+    """An honest consequence of the new rule, reported in plain language.
+
+    A word owned by m players cannot go to those m, nor to anyone hunting one
+    of them - so roughly a third of the group is the ceiling, not a half.
+    """
+    rng = random.Random(12)
+    n = 16
+    ids = list(range(n))
+    own = {i: ("moist" if i < n // 2 else f"word{i}") for i in ids}
+    targets = build_target_cycle(ids, rng)
+    with pytest.raises(NoLegalWordDeal, match="at most about a third"):
+        build_word_derangement(ids, own, rng, targets=targets)
+
+
+def test_two_players_are_exempt_because_it_is_impossible():
+    """With 2 players the only two words are both banned - the rule is dropped."""
+    rng = random.Random(3)
+    ids = [0, 1]
+    own = {0: "alpha", 1: "beta"}
+    targets = build_target_cycle(ids, rng)
+    assigned = build_word_derangement(ids, own, rng, targets=targets)
+    assert assigned == {0: "beta", 1: "alpha"}
+    verify_assignments(targets, own, assigned)  # must not raise
+
+
+def test_three_players_is_the_tightest_solvable_case():
+    rng = random.Random(4)
+    ids = [0, 1, 2]
+    own = {0: "alpha", 1: "beta", 2: "gamma"}
+    for _ in range(30):
+        targets = build_target_cycle(ids, rng)
+        assigned = build_word_derangement(ids, own, rng, targets=targets)
+        verify_assignments(targets, own, assigned)
+
+
+def test_verify_rejects_a_targets_own_word():
+    targets = {1: 2, 2: 3, 3: 1}
+    own = {1: "a", 2: "b", 3: "c"}
+    words = {1: "B", 2: "c", 3: "a"}  # player 1 must make player 2 say "b"
+    with pytest.raises(AssignmentError, match="target's own word"):
+        verify_assignments(targets, own, words)
+
+
+def test_impossible_word_sets_fail_with_an_explanation():
+    """Every word the same: no legal deal exists, and we say so clearly."""
+    ids = list(range(4))
+    own = {i: "moist" for i in ids}
+    with pytest.raises(AssignmentError, match="same word"):
+        build_word_derangement(ids, own, random.Random(0), targets={0: 1, 1: 2, 2: 3, 3: 0})

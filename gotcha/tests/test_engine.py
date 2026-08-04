@@ -305,3 +305,65 @@ def test_broken_chain_is_caught_before_delivery(engine, monkeypatch):
     # Nothing was written, nothing was announced.
     assert all(p.target_id is None for p in engine.storage.players(game.id))
     assert engine.current_status(game.id).game.is_lobby
+
+
+# --- never your target's own word -----------------------------------------
+
+
+def test_no_player_is_sent_after_their_targets_own_word(engine):
+    """The rule that made 'get Mignon to say margarita' possible is gone."""
+    for size in (3, 5, 8, 16):
+        game, players = seed_lobby(engine, size, game_name=f"Game {size}")
+        engine.generate_assignments(game.id)
+        for p in players:
+            mission = engine.get_mission(p.id)
+            target = engine.storage.get_player(mission.target_id)
+            assert mission.word.lower() != (target.word or "").lower(), (
+                f"{p.name} was told to make {target.name} say {target.name}'s own word"
+            )
+            assert mission.word.lower() != (engine.storage.get_player(p.id).word or "").lower()
+
+
+def test_the_rule_survives_inheritance(engine):
+    """Inherited missions keep the property, since they were dealt under it."""
+    game, players = seed_lobby(engine, 8)
+    engine.generate_assignments(game.id)
+    while not engine.current_status(game.id).game.is_finished:
+        alive = engine.storage.alive_players(game.id)
+        for p in alive:
+            mission = engine.get_mission(p.id)
+            if mission and len(alive) > 2:
+                target = engine.storage.get_player(mission.target_id)
+                assert mission.word.lower() != (target.word or "").lower()
+        hunter = alive[0]
+        mission = engine.get_mission(hunter.id)
+        report = engine.report_gotcha(game.id, hunter.id, mission.target_name)
+        witness = next(p for p in engine.storage.players(game.id) if p.id != hunter.id)
+        engine.confirm_gotcha(game.id, report.id, witness.id)
+
+
+def test_an_awkward_chain_is_redrawn_rather_than_refused(engine):
+    """A quarter of the group sharing a word must not block the game."""
+    game = engine.create_game("Duplicates")
+    for i in range(16):
+        player = engine.add_player(game.id, name=f"P{i:02d}", telegram_id=900 + i)
+        engine.submit_word(player.id, "moist" if i < 4 else f"word{i}")
+    engine.generate_assignments(game.id)  # must not raise
+    assert engine.current_status(game.id).game.is_active
+    for p in engine.storage.players(game.id):
+        mission = engine.get_mission(p.id)
+        target = engine.storage.get_player(mission.target_id)
+        assert mission.word.lower() != (target.word or "").lower()
+
+
+def test_hopeless_word_lists_are_explained_not_crashed(engine):
+    """Half the group on one word: say so in words the organiser can act on."""
+    game = engine.create_game("Too many moists")
+    for i in range(16):
+        player = engine.add_player(game.id, name=f"P{i:02d}", telegram_id=800 + i)
+        engine.submit_word(player.id, "moist" if i < 8 else f"word{i}")
+    with pytest.raises(AssignmentError, match="at most about a third"):
+        engine.generate_assignments(game.id)
+    # The game is untouched: still a lobby, nothing delivered.
+    assert engine.current_status(game.id).game.is_lobby
+    assert all(p.target_id is None for p in engine.storage.players(game.id))
