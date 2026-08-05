@@ -133,6 +133,50 @@ check('thumbnails actually rendered', (thumbSrc ?? '').startsWith('data:image/pn
 
 await page.screenshot({ path: process.argv[4] ?? '/tmp/ui-lineage.png' });
 
+// ---------------------------------------------------------------- sharing
+// The whole point of the URL codec: a creature survives a trip through a link.
+await page.locator('.panel').nth(4).click();
+const link = await page.evaluate(() => {
+  const g = window.derby.race.lanes[window.derby.selection.chosen[0]].genome;
+  return `${location.origin}${location.pathname}#c=${window.__encode(g)}`;
+});
+const sharedGenome = await page.evaluate(() =>
+  JSON.stringify(window.derby.race.lanes[window.derby.selection.chosen[0]].genome),
+);
+
+const page2 = await browser.newPage({ viewport: { width: 1280, height: 800 } });
+const errors2 = [];
+page2.on('pageerror', (e) => errors2.push(e.message));
+await page2.goto(link, { waitUntil: 'load' });
+await page2.waitForFunction('window.derby && window.derby.race.lanes.length === 8');
+const arrived = await page2.evaluate(() => JSON.stringify(window.derby.race.lanes[0].genome));
+check('a shared link reproduces the exact creature', arrived === sharedGenome);
+check('a shared link opens a full generation', (await page2.locator('.panel').count()) === 8);
+check(
+  'the address bar is cleaned up after loading',
+  await page2.evaluate(() => location.hash === ''),
+);
+check('shared link page has no errors', errors2.length === 0, errors2[0] ?? '');
+
+// A mangled link must not stop the game loading.
+const page3 = await browser.newPage({ viewport: { width: 800, height: 600 } });
+const errors3 = [];
+page3.on('pageerror', (e) => errors3.push(e.message));
+await page3.goto(`${link.split('#')[0]}#c=thisIsNotAGenome`, { waitUntil: 'load' });
+await page3.waitForFunction('window.derby && window.derby.race.lanes.length === 8');
+check('a broken link still starts the game', (await page3.locator('.panel').count()) === 8);
+check('a broken link says so', ((await page3.locator('#hint').textContent()) ?? '').includes('readable'));
+check('broken link page has no errors', errors3.length === 0, errors3[0] ?? '');
+
+// An empty lineage should explain itself rather than be a blank strip.
+const page4 = await browser.newPage({ viewport: { width: 1280, height: 800 } });
+await page4.goto(`http://localhost:${port}/`, { waitUntil: 'load' });
+await page4.waitForSelector('.panel');
+await page4.locator('#lineagetoggle').click();
+const emptyText = (await page4.locator('.lineage-empty').textContent()) ?? '';
+check('an empty lineage explains itself', emptyText.includes('Pick two'), `got "${emptyText.slice(0, 40)}"`);
+check('the empty message is actually visible', await page4.locator('.lineage-empty').isVisible());
+
 check('no page errors', errors.length === 0, errors[0] ?? '');
 
 let failed = 0;

@@ -1,27 +1,30 @@
 /**
- * Checkpoint 7: pick the two creatures you like.
+ * Creature Derby.
  *
- * The player is the fitness function. Nothing in this project scores a
- * creature; the two that get picked are the two that breed, and that is the
- * only selection pressure there is.
+ * Eight procedurally generated creatures race for fifteen seconds. You pick the
+ * two you like. Those two breed, and their children race. Repeat.
  *
- * Breeding itself lands in the next checkpoint — for now the button starts a
- * fresh unrelated generation, so the selection flow can be exercised end to
- * end.
+ * There is no fitness function anywhere in this project. Nothing scores a
+ * creature or decides one is better than another — the player is the entire
+ * selection pressure. That is what makes it a game rather than a demo, and it
+ * is also why it runs comfortably in a browser: only ever eight creatures are
+ * simulated, instead of the thousands an automatic search would need.
+ *
+ * After Karl Sims, "Evolving Virtual Creatures", SIGGRAPH 1994. See CREDITS.md.
  */
 
 import { Vector2 } from 'three';
 import RAPIER from '@dimforge/rapier3d-compat';
 
 import { randomPopulation } from './genome/random.ts';
-import { breed } from './genome/breed.ts';
+import { breed, populationFrom } from './genome/breed.ts';
 import type { Genome } from './genome/types.ts';
 import { randomSeed } from './rng.ts';
 import { createRenderer } from './render/scene.ts';
 import { LANE_COUNT, Race } from './race/race.ts';
 import { PARENTS_NEEDED, Selection, type PanelRefs } from './ui/selection.ts';
 import { Lineage } from './ui/lineage.ts';
-import { encodeGenome } from './genome/codec.ts';
+import { clearUrl, copyText, genomeFromUrl, linkTo } from './ui/share.ts';
 
 const canvas = document.querySelector<HTMLCanvasElement>('#stage')!;
 const gridEl = document.querySelector<HTMLDivElement>('#grid')!;
@@ -32,6 +35,7 @@ const timerFill = document.querySelector<HTMLDivElement>('#timerfill')!;
 const hintEl = document.querySelector<HTMLDivElement>('#hint')!;
 const replayBtn = document.querySelector<HTMLButtonElement>('#replay')!;
 const breedBtn = document.querySelector<HTMLButtonElement>('#breed')!;
+const shareBtn = document.querySelector<HTMLButtonElement>('#share')!;
 const rateInput = document.querySelector<HTMLInputElement>('#rate')!;
 const rateLabel = document.querySelector<HTMLOutputElement>('#ratelabel')!;
 const lineageBar = document.querySelector<HTMLElement>('#lineagebar')!;
@@ -81,47 +85,51 @@ async function main(): Promise<void> {
 
   let seed = randomSeed();
   let generation = 1;
-  let race = new Race(randomPopulation(seed, LANE_COUNT));
-
-  /** Which lanes are the untouched parents carried over from last generation. */
   let survivors: number[] = [];
+  let openingMessage = '';
+
+  // A shared link, if we arrived by one.
+  const shared = genomeFromUrl();
+  let opening: Genome[];
+  if (shared && 'genome' in shared) {
+    opening = populationFrom(shared.genome, 0.35, seed);
+    openingMessage = 'opened a shared creature — it is number 1, with seven variations on it';
+  } else {
+    if (shared) openingMessage = "that link did not contain a readable creature, so here are eight new ones";
+    opening = randomPopulation(seed, LANE_COUNT);
+  }
+  // The address bar is a starting point, not a running record of state; leaving
+  // a stale creature in it would reload the wrong thing later.
+  clearUrl();
+
+  let race = new Race(opening);
 
   const selection = new Selection(panels, (picked) => {
     breedBtn.disabled = picked.length !== PARENTS_NEEDED;
+    shareBtn.disabled = picked.length === 0;
     updateHint();
   });
 
   const lineage = new Lineage(lineageEl, (genome) => {
-    // A creature's whole description fits in a link, so sharing one needs no
-    // server and no account — the point of putting the genome in the URL.
-    const url = `${location.origin}${location.pathname}#c=${encodeGenome(genome)}`;
-    void navigator.clipboard?.writeText(url).then(
-      () => flash('link to that creature copied'),
-      () => flash('could not reach the clipboard'),
+    void copyText(linkTo(genome)).then((ok) =>
+      flash(ok ? 'link to that creature copied' : 'could not reach the clipboard'),
     );
   });
 
   let flashTimer = 0;
-  function flash(message: string): void {
+  /**
+   * Show a message in place of the hint.
+   *
+   * `holdMs` of 0 means leave it there until something else changes the hint.
+   * A "copied" toast should get out of the way; a "that link was broken"
+   * message should not vanish while the page is still loading, which is exactly
+   * when a slow machine would otherwise never show it at all.
+   */
+  function flash(message: string, holdMs = 2800): void {
     hintEl.textContent = message;
     clearTimeout(flashTimer);
-    flashTimer = window.setTimeout(updateHint, 2600);
+    if (holdMs > 0) flashTimer = window.setTimeout(updateHint, holdMs);
   }
-
-  lineageToggle.addEventListener('click', () => {
-    const showing = lineageBar.hasAttribute('hidden');
-    lineageBar.toggleAttribute('hidden', !showing);
-    lineageToggle.setAttribute('aria-expanded', String(showing));
-  });
-
-  function mutationRate(): number {
-    return Number(rateInput.value) / 100;
-  }
-
-  rateInput.addEventListener('input', () => {
-    rateLabel.textContent = describeRate(mutationRate());
-  });
-  rateLabel.textContent = describeRate(mutationRate());
 
   function updateHint(): void {
     const picked = selection.chosen.length;
@@ -135,6 +143,21 @@ async function main(): Promise<void> {
     else hintEl.textContent = 'two picked — breed them, or click another to swap';
   }
 
+  function mutationRate(): number {
+    return Number(rateInput.value) / 100;
+  }
+
+  rateInput.addEventListener('input', () => {
+    rateLabel.textContent = describeRate(mutationRate());
+  });
+  rateLabel.textContent = describeRate(mutationRate());
+
+  lineageToggle.addEventListener('click', () => {
+    const showing = lineageBar.hasAttribute('hidden');
+    lineageBar.toggleAttribute('hidden', !showing);
+    lineageToggle.setAttribute('aria-expanded', String(showing));
+  });
+
   function startRace(genomes: readonly Genome[], inherited: number[] = []): void {
     race.dispose();
     race = new Race(genomes);
@@ -143,6 +166,7 @@ async function main(): Promise<void> {
     selection.setInherited(survivors);
     timerFill.style.opacity = '1';
     breedBtn.disabled = true;
+    shareBtn.disabled = true;
     updateHint();
   }
 
@@ -154,12 +178,18 @@ async function main(): Promise<void> {
     );
   });
 
+  shareBtn.addEventListener('click', () => {
+    const lane = race.lanes[selection.chosen[0] ?? -1];
+    if (!lane) return;
+    void copyText(linkTo(lane.genome)).then((ok) =>
+      flash(ok ? 'link copied — anyone who opens it gets that creature' : 'could not reach the clipboard'),
+    );
+  });
+
   breedBtn.addEventListener('click', () => {
     const [a, b] = selection.chosen;
-    if (a === undefined || b === undefined) return;
-
-    const parentA = race.lanes[a]?.genome;
-    const parentB = race.lanes[b]?.genome;
+    const parentA = a === undefined ? undefined : race.lanes[a]?.genome;
+    const parentB = b === undefined ? undefined : race.lanes[b]?.genome;
     if (!parentA || !parentB) return;
 
     lineage.record(generation, parentA, parentB);
@@ -168,7 +198,7 @@ async function main(): Promise<void> {
     generationEl.textContent = String(generation);
     seed = randomSeed();
 
-    // breed() puts the two untouched parents first, so lanes 0 and 1 are the
+    // breed() puts the two untouched parents first, so lanes 1 and 2 are the
     // survivors and get marked as such.
     startRace(breed(parentA, parentB, mutationRate(), seed), [0, 1]);
   });
@@ -181,6 +211,11 @@ async function main(): Promise<void> {
       seed = randomSeed();
       lineage.reset();
       startRace(randomPopulation(seed, LANE_COUNT));
+      flash('started over with eight new creatures');
+    } else if (e.code === 'KeyR' && !e.metaKey && !e.ctrlKey) {
+      replayBtn.click();
+    } else if (e.code === 'Enter' && !breedBtn.disabled) {
+      breedBtn.click();
     }
   });
 
@@ -226,19 +261,28 @@ async function main(): Promise<void> {
   }
 
   requestAnimationFrame(frame);
-  updateHint();
+  // The opening message stays put: it explains why the screen looks the way
+  // it does, and is worth more than a two-second glimpse.
+  if (openingMessage) flash(openingMessage, 0);
+  else updateHint();
 
+  // A handle on the running game, for the tools in tools/ and for poking at
+  // things from the browser console.
   (window as unknown as Record<string, unknown>).derby = {
     get race(): Race {
       return race;
     },
     selection,
+    lineage,
     startRace,
   };
+  // Used by tools/ui-check.mjs to build a share link without duplicating the
+  // codec in the test.
+  (window as unknown as Record<string, unknown>).__encode = (g: Genome) => linkTo(g).split('#c=')[1];
 }
 
 main().catch((err: unknown) => {
   bootEl.classList.remove('gone');
-  bootEl.textContent = `failed: ${String(err)}`;
+  bootEl.textContent = `Creature Derby could not start: ${String(err)}`;
   console.error(err);
 });

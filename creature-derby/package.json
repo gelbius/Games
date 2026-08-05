@@ -5,12 +5,18 @@
   "type": "module",
   "license": "MIT",
   "description": "Breed racing creatures. A browser homage to Karl Sims' Evolving Virtual Creatures.",
+  "engines": {
+    "node": ">=20"
+  },
   "scripts": {
     "dev": "vite",
     "build": "tsc --noEmit && vite build",
     "preview": "vite preview",
     "typecheck": "tsc --noEmit",
-    "test": "node --test tests/*.test.ts"
+    "test": "node --test tests/*.test.ts",
+    "check:ui": "npm run build && node tools/ui-check.mjs",
+    "check:camera": "npm run build && node tools/camera-check.mjs",
+    "measure": "node tools/locomotion.ts"
   },
   "dependencies": {
     "@dimforge/rapier3d-compat": "^0.19.3",

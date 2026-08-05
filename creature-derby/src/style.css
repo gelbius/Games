@@ -425,3 +425,49 @@ body {
   padding-bottom: 18px;
   font-size: 14px;
 }
+
+/* ------------------------------------------------------------- narrow screens */
+
+/*
+ * The controls are a single row on a wide screen and would otherwise squeeze
+ * into unreadable columns of wrapped words on a narrow one — "Breed the next
+ * generation" folding into three lines, the hint into four. Letting the row
+ * wrap and giving the hint a line of its own keeps every control tappable.
+ */
+#controls {
+  flex-wrap: wrap;
+}
+
+.btn {
+  white-space: nowrap;
+}
+
+@media (max-width: 920px) {
+  #hint {
+    flex: 1 1 100%;
+    order: -1;
+  }
+
+  .spacer {
+    display: none;
+  }
+
+  #controls {
+    justify-content: flex-end;
+  }
+
+  #top {
+    gap: 12px;
+  }
+}
+
+@media (max-width: 560px) {
+  #mutation {
+    flex: 1 1 100%;
+  }
+
+  #rate {
+    flex: 1;
+    width: auto;
+  }
+}

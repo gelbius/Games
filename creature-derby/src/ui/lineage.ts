@@ -28,7 +28,11 @@ export class Lineage {
   constructor(
     private readonly root: HTMLElement,
     private readonly onPick: (genome: Genome) => void,
-  ) {}
+  ) {
+    // Draw straight away, so opening the panel before breeding anything shows
+    // the explanation rather than a blank strip.
+    this.render();
+  }
 
   get length(): number {
     return this.steps.length;
@@ -51,6 +55,9 @@ export class Lineage {
     if (this.steps.length === 0) {
       const empty = document.createElement('p');
       empty.className = 'lineage-empty';
+      // Flex children shrink to nothing when the row is short; this one is the
+      // only content there is, so it must not.
+      empty.style.flex = '1 1 auto';
       empty.textContent =
         'No ancestors yet. Pick two creatures and breed them, and their line will appear here.';
       this.root.appendChild(empty);

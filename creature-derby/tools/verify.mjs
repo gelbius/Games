@@ -56,10 +56,10 @@ page.on('pageerror', (e) => logs.push(`[pageerror] ${e.message}`));
 await page.goto(`http://localhost:${port}/`, { waitUntil: 'load' });
 await page.waitForTimeout(WAIT);
 
-const hud = await page.textContent('#hud-status').catch(() => '(no hud)');
+const hud = await page.textContent('#hint').catch(() => '(no hint)');
 await page.screenshot({ path: OUT });
 
-console.log('HUD:', hud);
+console.log('HINT:', hud);
 if (logs.length) console.log('CONSOLE:\n' + logs.join('\n'));
 else console.log('CONSOLE: (silent)');
 

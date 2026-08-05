@@ -89,6 +89,14 @@ export class Lane {
     updateContactShadow(this.scene, s.centre.x, s.centre.y - s.radius, s.centre.z, s.radius);
   }
 
+  /**
+   * What the camera is currently framing: centre, extent and velocity.
+   * Read-only and updated by present(); used by tools/camera-check.mjs.
+   */
+  get focus(): Readonly<Subject> {
+    return this.subject;
+  }
+
   /** How far the creature has got from where it started, in metres. */
   get distance(): number {
     const c = this.subject.centre;

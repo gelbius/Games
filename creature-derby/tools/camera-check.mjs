@@ -7,7 +7,7 @@
  * not just its centre — was inside the frame, and how far outside it got at
  * worst.
  *
- * Usage: node tools/camera-check.mjs [seeds] [raceSeconds]
+ * Usage: node tools/camera-check.mjs [runs] [raceSeconds]
  */
 import { chromium } from 'playwright';
 import { createServer } from 'node:http';
@@ -15,7 +15,7 @@ import { readFile, stat } from 'node:fs/promises';
 import { join, extname, normalize } from 'node:path';
 
 const ROOT = new URL('../dist/', import.meta.url).pathname;
-const SEEDS = (process.argv[2] ?? '3,5,7,11,13,17,19,23,29,31').split(',');
+const RUNS = Number(process.argv[2] ?? 3);
 const SECONDS = Number(process.argv[3] ?? 15);
 
 const MIME = { '.html': 'text/html', '.js': 'text/javascript', '.css': 'text/css' };
@@ -38,44 +38,44 @@ const browser = await chromium.launch({
   args: ['--use-gl=angle', '--use-angle=swiftshader', '--enable-unsafe-swiftshader', '--no-sandbox'],
 });
 
-console.log('seed | in frame | worst overshoot | min height | notes');
+console.log(' run | creatures | in frame | worst overshoot | min height | notes');
 
 let worstOverall = 0;
 let totalIn = 0;
 let totalSamples = 0;
 
-for (const seed of SEEDS) {
+for (let run = 1; run <= RUNS; run++) {
   const page = await browser.newPage({ viewport: { width: 1280, height: 720 } });
   const errors = [];
   page.on('pageerror', (e) => errors.push(e.message));
-  await page.goto(`http://localhost:${port}/?seed=${seed}`, { waitUntil: 'load' });
-  await page.waitForFunction('window.derby && window.derby.subject');
+  await page.goto(`http://localhost:${port}/`, { waitUntil: 'load' });
+  await page.waitForFunction('window.derby && window.derby.race && window.derby.race.lanes.length === 8');
 
   const samples = [];
   const deadline = Date.now() + SECONDS * 1000;
   while (Date.now() < deadline) {
-    const s = await page.evaluate(() => {
-      const d = window.derby;
-      const subject = d.subject;
-      if (!subject) return null;
-
-      // Project the extremes of the creature's bounding sphere, not just its
+    const batch = await page.evaluate(() => {
+      const race = window.derby.race;
+      // Project the extremes of each creature's bounding sphere, not just its
       // centre: a creature can be centred and still have limbs off-screen.
-      let worst = 0;
-      for (const [dx, dy, dz] of [
-        [0, 0, 0], [1, 0, 0], [-1, 0, 0], [0, 1, 0], [0, -1, 0], [0, 0, 1], [0, 0, -1],
-      ]) {
-        const p = subject.centre.clone();
-        p.x += dx * subject.radius;
-        p.y += dy * subject.radius;
-        p.z += dz * subject.radius;
-        p.project(d.camera);
-        worst = Math.max(worst, Math.abs(p.x), Math.abs(p.y));
-      }
-      return { worst, cameraY: d.camera.position.y, t: d.time };
+      return race.lanes.map((lane) => {
+        const subject = lane.focus;
+        let worst = 0;
+        for (const [dx, dy, dz] of [
+          [0, 0, 0], [1, 0, 0], [-1, 0, 0], [0, 1, 0], [0, -1, 0], [0, 0, 1], [0, 0, -1],
+        ]) {
+          const p = subject.centre.clone();
+          p.x += dx * subject.radius;
+          p.y += dy * subject.radius;
+          p.z += dz * subject.radius;
+          p.project(lane.camera);
+          worst = Math.max(worst, Math.abs(p.x), Math.abs(p.y));
+        }
+        return { worst, cameraY: lane.camera.position.y, t: race.seconds };
+      });
     });
-    if (s) samples.push(s);
-    await page.waitForTimeout(60);
+    samples.push(...batch);
+    await page.waitForTimeout(70);
   }
 
   // Ignore the first moments: the camera is allowed to be settling on a cut.
@@ -89,7 +89,9 @@ for (const seed of SEEDS) {
   worstOverall = Math.max(worstOverall, worst);
 
   console.log(
-    String(seed).padStart(4),
+    String(run).padStart(4),
+    '|',
+    String(8).padStart(9),
     '|',
     `${((inFrame / settled.length) * 100).toFixed(0)}%`.padStart(8),
     '|',
@@ -103,7 +105,7 @@ for (const seed of SEEDS) {
 }
 
 console.log(
-  `\noverall in frame: ${((totalIn / totalSamples) * 100).toFixed(1)}%   worst overshoot: ${worstOverall.toFixed(2)}`,
+  `\n${totalSamples} samples across ${RUNS * 8} creatures — in frame: ${((totalIn / totalSamples) * 100).toFixed(1)}%   worst overshoot: ${worstOverall.toFixed(2)}`,
 );
 console.log('(overshoot 1.00 = exactly at the edge of frame; under 1.00 is inside)');
 

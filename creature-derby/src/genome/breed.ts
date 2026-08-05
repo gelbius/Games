@@ -259,6 +259,23 @@ export function mutate(source: Genome, rate: number, rng: Rng): Genome {
 }
 
 /**
+ * A generation grown from a single creature.
+ *
+ * Used when someone opens a shared link: the creature they were sent arrives
+ * intact in lane one, with seven variations on it to breed from, so a shared
+ * link is somewhere to carry on from rather than just something to look at.
+ */
+export function populationFrom(genome: Genome, rate: number, seed: number): Genome[] {
+  const rng = new Rng(seed);
+  const generation: Genome[] = [quantize(genome)];
+  // A rate of zero would otherwise produce eight identical creatures and
+  // nothing to choose between.
+  const spread = Math.max(rate, 0.15);
+  while (generation.length < GENERATION_SIZE) generation.push(mutate(genome, spread, rng));
+  return generation;
+}
+
+/**
  * A whole new generation from two chosen parents.
  *
  * Both parents carry through untouched. That matters more than it sounds: if
