@@ -12,10 +12,27 @@
   </head>
   <body>
     <div id="app">
-      <canvas id="stage"></canvas>
-      <div id="hud">
-        <div id="hud-status">booting physics…</div>
-      </div>
+      <header id="top">
+        <div class="brand">
+          <span class="mark">🐛</span>
+          <span class="name">Creature Derby</span>
+        </div>
+        <div id="generation" class="stat"><span class="k">generation</span> <b>1</b></div>
+        <div id="clock" class="stat"><span class="k">time</span> <b>0.0s</b></div>
+        <div id="timerbar"><div id="timerfill"></div></div>
+      </header>
+
+      <main id="stagewrap">
+        <canvas id="stage"></canvas>
+        <div id="grid"><!-- panels injected here --></div>
+        <div id="boot">loading physics…</div>
+      </main>
+
+      <footer id="controls">
+        <div id="hint">the race is running</div>
+        <div class="spacer"></div>
+        <button id="replay" class="btn">Replay</button>
+      </footer>
     </div>
     <script type="module" src="/src/main.ts"></script>
   </body>

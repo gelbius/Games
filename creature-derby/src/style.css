@@ -1,9 +1,12 @@
 :root {
   --bg: #0e1116;
+  --panel: #151a22;
   --ink: #e8edf4;
   --dim: #8b97a8;
+  --line: rgba(232, 237, 244, 0.13);
   --accent: #6fd3c7;
-  --warn: #f2b544;
+  --accent-ink: #06231f;
+  --gold: #f2c14e;
   color-scheme: dark;
 }
 
@@ -19,13 +22,76 @@ body {
   overflow: hidden;
   background: var(--bg);
   color: var(--ink);
-  font: 14px/1.45 ui-sans-serif, system-ui, -apple-system, "Segoe UI", sans-serif;
+  font: 14px/1.45 ui-sans-serif, system-ui, -apple-system, 'Segoe UI', sans-serif;
+  -webkit-font-smoothing: antialiased;
 }
 
 #app {
-  position: relative;
-  width: 100vw;
+  display: grid;
+  grid-template-rows: auto 1fr auto;
   height: 100vh;
+  height: 100dvh;
+}
+
+/* ------------------------------------------------------------------- header */
+
+#top {
+  display: flex;
+  align-items: center;
+  gap: 18px;
+  padding: 10px 16px;
+  border-bottom: 1px solid var(--line);
+  position: relative;
+}
+
+.brand {
+  display: flex;
+  align-items: baseline;
+  gap: 8px;
+  font-weight: 620;
+  letter-spacing: 0.2px;
+}
+
+.brand .mark {
+  font-size: 17px;
+}
+
+.stat {
+  color: var(--dim);
+  font-variant-numeric: tabular-nums;
+  font-size: 13px;
+}
+
+.stat .k {
+  opacity: 0.7;
+}
+
+.stat b {
+  color: var(--ink);
+  font-weight: 600;
+}
+
+#timerbar {
+  position: absolute;
+  left: 0;
+  right: 0;
+  bottom: -1px;
+  height: 2px;
+  background: transparent;
+}
+
+#timerfill {
+  height: 100%;
+  width: 0%;
+  background: var(--accent);
+  transition: opacity 0.3s;
+}
+
+/* -------------------------------------------------------------------- stage */
+
+#stagewrap {
+  position: relative;
+  min-height: 0;
 }
 
 #stage {
@@ -34,18 +100,140 @@ body {
   height: 100%;
 }
 
-#hud {
+#boot {
   position: absolute;
-  top: 12px;
-  left: 12px;
-  padding: 8px 12px;
-  border-radius: 8px;
-  background: rgba(14, 17, 22, 0.72);
-  border: 1px solid rgba(232, 237, 244, 0.12);
-  font-variant-numeric: tabular-nums;
+  inset: 0;
+  display: grid;
+  place-items: center;
+  color: var(--dim);
+  background: var(--bg);
+}
+
+#boot.gone {
+  display: none;
+}
+
+/* The clickable overlay, sitting exactly on top of the eight rendered panels. */
+#grid {
+  position: absolute;
+  inset: 0;
+  display: grid;
+  grid-template-columns: repeat(4, 1fr);
+  grid-template-rows: repeat(2, 1fr);
+}
+
+.panel {
+  position: relative;
+  appearance: none;
+  background: transparent;
+  border: 1px solid transparent;
+  color: inherit;
+  font: inherit;
+  text-align: left;
+  padding: 0;
+  cursor: pointer;
+  outline: none;
+  transition: background 0.15s, border-color 0.15s;
+}
+
+.panel::after {
+  /* Hairlines between panels, so eight views read as eight views. */
+  content: '';
+  position: absolute;
+  inset: 0;
+  border-right: 1px solid var(--line);
+  border-bottom: 1px solid var(--line);
   pointer-events: none;
 }
 
-#hud-status {
+.panel-label {
+  position: absolute;
+  top: 8px;
+  left: 8px;
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  padding: 3px 8px 3px 4px;
+  border-radius: 999px;
+  background: rgba(14, 17, 22, 0.66);
+  border: 1px solid var(--line);
+  font-size: 12px;
+  font-variant-numeric: tabular-nums;
+  pointer-events: none;
+  backdrop-filter: blur(3px);
+}
+
+.panel-num {
+  display: grid;
+  place-items: center;
+  width: 18px;
+  height: 18px;
+  border-radius: 999px;
+  background: rgba(232, 237, 244, 0.12);
+  font-size: 11px;
+  font-weight: 650;
+}
+
+.panel-dist {
   color: var(--dim);
+}
+
+.panel-tag {
+  position: absolute;
+  top: 8px;
+  right: 8px;
+  padding: 2px 7px;
+  border-radius: 999px;
+  font-size: 11px;
+  font-weight: 640;
+  pointer-events: none;
+  opacity: 0;
+}
+
+.panel[data-parent='1'] .panel-tag {
+  opacity: 1;
+  background: rgba(242, 193, 78, 0.15);
+  border: 1px solid rgba(242, 193, 78, 0.45);
+  color: var(--gold);
+}
+
+/* ------------------------------------------------------------------ footer */
+
+#controls {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 10px 16px;
+  border-top: 1px solid var(--line);
+}
+
+.spacer {
+  flex: 1;
+}
+
+#hint {
+  color: var(--dim);
+  font-size: 13px;
+}
+
+.btn {
+  appearance: none;
+  border: 1px solid var(--line);
+  background: var(--panel);
+  color: var(--ink);
+  font: inherit;
+  font-weight: 560;
+  padding: 7px 14px;
+  border-radius: 8px;
+  cursor: pointer;
+  transition: background 0.15s, border-color 0.15s, opacity 0.15s;
+}
+
+.btn:hover:not(:disabled) {
+  border-color: rgba(232, 237, 244, 0.3);
+}
+
+.btn:disabled {
+  opacity: 0.4;
+  cursor: default;
 }

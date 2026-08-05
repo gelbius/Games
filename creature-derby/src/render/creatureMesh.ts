@@ -31,8 +31,6 @@ export function createCreatureView(skeleton: Skeleton): CreatureView {
 
     const mesh = new THREE.Mesh(UNIT_BOX, material);
     mesh.scale.set(part.halfExtents[0] * 2, part.halfExtents[1] * 2, part.halfExtents[2] * 2);
-    mesh.castShadow = true;
-    mesh.receiveShadow = true;
 
     group.add(mesh);
     meshes.push(mesh);
