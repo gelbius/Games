@@ -28,6 +28,11 @@
         <div id="boot">loading physics…</div>
       </main>
 
+      <section id="lineagebar" hidden>
+        <h2 class="lineage-title">Lineage</h2>
+        <div id="lineage"></div>
+      </section>
+
       <footer id="controls">
         <div id="hint">the race is running</div>
         <div class="spacer"></div>
@@ -36,6 +41,7 @@
           <input id="rate" type="range" min="0" max="100" value="35" />
           <output id="ratelabel">tame</output>
         </label>
+        <button id="lineagetoggle" class="btn" aria-expanded="false">Lineage</button>
         <button id="replay" class="btn">Replay</button>
         <button id="breed" class="btn primary" disabled>Breed the next generation</button>
       </footer>

@@ -20,6 +20,8 @@ import { randomSeed } from './rng.ts';
 import { createRenderer } from './render/scene.ts';
 import { LANE_COUNT, Race } from './race/race.ts';
 import { PARENTS_NEEDED, Selection, type PanelRefs } from './ui/selection.ts';
+import { Lineage } from './ui/lineage.ts';
+import { encodeGenome } from './genome/codec.ts';
 
 const canvas = document.querySelector<HTMLCanvasElement>('#stage')!;
 const gridEl = document.querySelector<HTMLDivElement>('#grid')!;
@@ -32,6 +34,9 @@ const replayBtn = document.querySelector<HTMLButtonElement>('#replay')!;
 const breedBtn = document.querySelector<HTMLButtonElement>('#breed')!;
 const rateInput = document.querySelector<HTMLInputElement>('#rate')!;
 const rateLabel = document.querySelector<HTMLOutputElement>('#ratelabel')!;
+const lineageBar = document.querySelector<HTMLElement>('#lineagebar')!;
+const lineageEl = document.querySelector<HTMLDivElement>('#lineage')!;
+const lineageToggle = document.querySelector<HTMLButtonElement>('#lineagetoggle')!;
 
 /** Plain words for the mutation slider. "0.35" means nothing to anybody. */
 function describeRate(rate: number): string {
@@ -86,6 +91,29 @@ async function main(): Promise<void> {
     updateHint();
   });
 
+  const lineage = new Lineage(lineageEl, (genome) => {
+    // A creature's whole description fits in a link, so sharing one needs no
+    // server and no account — the point of putting the genome in the URL.
+    const url = `${location.origin}${location.pathname}#c=${encodeGenome(genome)}`;
+    void navigator.clipboard?.writeText(url).then(
+      () => flash('link to that creature copied'),
+      () => flash('could not reach the clipboard'),
+    );
+  });
+
+  let flashTimer = 0;
+  function flash(message: string): void {
+    hintEl.textContent = message;
+    clearTimeout(flashTimer);
+    flashTimer = window.setTimeout(updateHint, 2600);
+  }
+
+  lineageToggle.addEventListener('click', () => {
+    const showing = lineageBar.hasAttribute('hidden');
+    lineageBar.toggleAttribute('hidden', !showing);
+    lineageToggle.setAttribute('aria-expanded', String(showing));
+  });
+
   function mutationRate(): number {
     return Number(rateInput.value) / 100;
   }
@@ -134,6 +162,8 @@ async function main(): Promise<void> {
     const parentB = race.lanes[b]?.genome;
     if (!parentA || !parentB) return;
 
+    lineage.record(generation, parentA, parentB);
+
     generation += 1;
     generationEl.textContent = String(generation);
     seed = randomSeed();
@@ -149,6 +179,7 @@ async function main(): Promise<void> {
       generation = 1;
       generationEl.textContent = '1';
       seed = randomSeed();
+      lineage.reset();
       startRace(randomPopulation(seed, LANE_COUNT));
     }
   });

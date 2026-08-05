@@ -120,6 +120,19 @@ await page.locator('#breed').click();
 await page.waitForTimeout(400);
 check('a third generation breeds too', (await page.locator('#generation b').textContent()) === '3');
 
+// The lineage strip should now hold both breedings.
+await page.locator('#lineagetoggle').click();
+await page.waitForTimeout(250);
+check('lineage panel opens', !(await page.locator('#lineagebar').getAttribute('hidden').then((v) => v !== null)));
+check('lineage records both generations', (await page.locator('.lineage-step').count()) === 2);
+check('each generation shows two parents', (await page.locator('.lineage-thumb').count()) === 4);
+
+const thumbSrc = await page.locator('.lineage-thumb img').first().getAttribute('src');
+check('thumbnails actually rendered', (thumbSrc ?? '').startsWith('data:image/png;base64,') && thumbSrc.length > 500,
+  `${(thumbSrc ?? '').length} chars`);
+
+await page.screenshot({ path: process.argv[4] ?? '/tmp/ui-lineage.png' });
+
 check('no page errors', errors.length === 0, errors[0] ?? '');
 
 let failed = 0;
