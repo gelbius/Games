@@ -14,6 +14,8 @@ import { Vector2 } from 'three';
 import RAPIER from '@dimforge/rapier3d-compat';
 
 import { randomPopulation } from './genome/random.ts';
+import { breed } from './genome/breed.ts';
+import type { Genome } from './genome/types.ts';
 import { randomSeed } from './rng.ts';
 import { createRenderer } from './render/scene.ts';
 import { LANE_COUNT, Race } from './race/race.ts';
@@ -28,6 +30,18 @@ const timerFill = document.querySelector<HTMLDivElement>('#timerfill')!;
 const hintEl = document.querySelector<HTMLDivElement>('#hint')!;
 const replayBtn = document.querySelector<HTMLButtonElement>('#replay')!;
 const breedBtn = document.querySelector<HTMLButtonElement>('#breed')!;
+const rateInput = document.querySelector<HTMLInputElement>('#rate')!;
+const rateLabel = document.querySelector<HTMLOutputElement>('#ratelabel')!;
+
+/** Plain words for the mutation slider. "0.35" means nothing to anybody. */
+function describeRate(rate: number): string {
+  if (rate <= 0.001) return 'clones';
+  if (rate < 0.2) return 'subtle';
+  if (rate < 0.45) return 'tame';
+  if (rate < 0.7) return 'lively';
+  if (rate < 0.9) return 'wild';
+  return 'feral';
+}
 
 /** Build the eight overlay panels once; only their text changes afterwards. */
 function buildPanels(): PanelRefs[] {
@@ -64,10 +78,22 @@ async function main(): Promise<void> {
   let generation = 1;
   let race = new Race(randomPopulation(seed, LANE_COUNT));
 
+  /** Which lanes are the untouched parents carried over from last generation. */
+  let survivors: number[] = [];
+
   const selection = new Selection(panels, (picked) => {
     breedBtn.disabled = picked.length !== PARENTS_NEEDED;
     updateHint();
   });
+
+  function mutationRate(): number {
+    return Number(rateInput.value) / 100;
+  }
+
+  rateInput.addEventListener('input', () => {
+    rateLabel.textContent = describeRate(mutationRate());
+  });
+  rateLabel.textContent = describeRate(mutationRate());
 
   function updateHint(): void {
     const picked = selection.chosen.length;
@@ -81,10 +107,12 @@ async function main(): Promise<void> {
     else hintEl.textContent = 'two picked — breed them, or click another to swap';
   }
 
-  function startRace(genomes = randomPopulation(seed, LANE_COUNT)): void {
+  function startRace(genomes: readonly Genome[], inherited: number[] = []): void {
     race.dispose();
     race = new Race(genomes);
     selection.clear();
+    survivors = inherited;
+    selection.setInherited(survivors);
     timerFill.style.opacity = '1';
     breedBtn.disabled = true;
     updateHint();
@@ -92,17 +120,37 @@ async function main(): Promise<void> {
 
   replayBtn.addEventListener('click', () => {
     // Same creatures, same result: the point of a seeded, fixed-step simulation.
-    startRace(race.lanes.map((lane) => lane.genome));
+    startRace(
+      race.lanes.map((lane) => lane.genome),
+      survivors,
+    );
   });
 
   breedBtn.addEventListener('click', () => {
-    if (!selection.complete) return;
-    // Placeholder until the next checkpoint: a fresh unrelated generation.
-    // Crossover and mutation replace this.
+    const [a, b] = selection.chosen;
+    if (a === undefined || b === undefined) return;
+
+    const parentA = race.lanes[a]?.genome;
+    const parentB = race.lanes[b]?.genome;
+    if (!parentA || !parentB) return;
+
     generation += 1;
     generationEl.textContent = String(generation);
     seed = randomSeed();
-    startRace();
+
+    // breed() puts the two untouched parents first, so lanes 0 and 1 are the
+    // survivors and get marked as such.
+    startRace(breed(parentA, parentB, mutationRate(), seed), [0, 1]);
+  });
+
+  addEventListener('keydown', (e) => {
+    if (e.code === 'KeyN' && (e.metaKey || e.ctrlKey)) {
+      e.preventDefault();
+      generation = 1;
+      generationEl.textContent = '1';
+      seed = randomSeed();
+      startRace(randomPopulation(seed, LANE_COUNT));
+    }
   });
 
   const bufferSize = new Vector2();

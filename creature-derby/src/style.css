@@ -285,3 +285,56 @@ body {
   border-color: var(--line);
   color: var(--ink);
 }
+
+/* ------------------------------------------------------- mutation slider */
+
+#mutation {
+  display: flex;
+  align-items: center;
+  gap: 9px;
+  padding: 5px 12px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: var(--panel);
+  cursor: pointer;
+  font-size: 13px;
+}
+
+#mutation .k {
+  color: var(--dim);
+}
+
+#ratelabel {
+  min-width: 66px;
+  color: var(--ink);
+  font-weight: 560;
+  font-variant-numeric: tabular-nums;
+}
+
+#rate {
+  appearance: none;
+  width: 116px;
+  height: 4px;
+  border-radius: 999px;
+  background: linear-gradient(90deg, var(--accent) 0%, var(--gold) 60%, #e0645c 100%);
+  cursor: pointer;
+}
+
+#rate::-webkit-slider-thumb {
+  appearance: none;
+  width: 14px;
+  height: 14px;
+  border-radius: 50%;
+  background: var(--ink);
+  border: 2px solid var(--bg);
+  cursor: pointer;
+}
+
+#rate::-moz-range-thumb {
+  width: 14px;
+  height: 14px;
+  border-radius: 50%;
+  background: var(--ink);
+  border: 2px solid var(--bg);
+  cursor: pointer;
+}

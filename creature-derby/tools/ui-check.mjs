@@ -83,11 +83,42 @@ check('breed disabled again', await breedDisabled());
 await page.keyboard.press('1');
 check('number keys select', (await selectedCount()) === 2);
 
+// The mutation slider speaks plain words rather than numbers.
+check('mutation slider starts at a readable label', (await page.locator('#ratelabel').textContent()) === 'tame');
+await page.locator('#rate').fill('95');
+check('mutation slider label follows the slider', (await page.locator('#ratelabel').textContent()) === 'feral');
+await page.locator('#rate').fill('35');
+
+// Genomes before breeding, so we can prove the next generation descends from
+// the two that were picked.
+const before = await page.evaluate(() => window.derby.race.lanes.map((l) => JSON.stringify(l.genome)));
+// Read the order the picks were actually made in. DOM order is not pick order:
+// swapping out an earlier pick leaves parent A further down the grid than
+// parent B, and breed() carries them through in pick order.
+const pickedLanes = await page.evaluate(() => [...window.derby.selection.chosen]);
+
 // Breeding resets the picks and bumps the generation.
 await page.locator('#breed').click();
-await page.waitForTimeout(300);
+await page.waitForTimeout(400);
 check('breeding clears the picks', (await selectedCount()) === 0);
 check('generation advanced', (await page.locator('#generation b').textContent()) === '2');
+
+const after = await page.evaluate(() => window.derby.race.lanes.map((l) => JSON.stringify(l.genome)));
+check('the new generation is eight creatures', after.length === 8);
+check(
+  'both chosen parents carried through untouched',
+  after[0] === before[pickedLanes[0]] && after[1] === before[pickedLanes[1]],
+  `parents were lanes ${pickedLanes.join(' and ')}`,
+);
+check('the six offspring are not just copies of the parents', new Set(after).size >= 6, `${new Set(after).size} distinct`);
+check('the two survivors are marked', (await page.locator('.panel[data-parent="1"]').count()) === 2);
+
+// A second generation, to prove the loop actually loops.
+await page.locator('.panel').nth(0).click();
+await page.locator('.panel').nth(3).click();
+await page.locator('#breed').click();
+await page.waitForTimeout(400);
+check('a third generation breeds too', (await page.locator('#generation b').textContent()) === '3');
 
 check('no page errors', errors.length === 0, errors[0] ?? '');
 
