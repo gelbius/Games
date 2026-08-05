@@ -1,8 +1,13 @@
 /**
- * Checkpoint 6: eight creatures race for fifteen seconds.
+ * Checkpoint 7: pick the two creatures you like.
  *
- * Eight independent worlds drawn into one canvas, with a clickable overlay
- * sitting exactly on top of the rendered panels.
+ * The player is the fitness function. Nothing in this project scores a
+ * creature; the two that get picked are the two that breed, and that is the
+ * only selection pressure there is.
+ *
+ * Breeding itself lands in the next checkpoint — for now the button starts a
+ * fresh unrelated generation, so the selection flow can be exercised end to
+ * end.
  */
 
 import { Vector2 } from 'three';
@@ -12,6 +17,7 @@ import { randomPopulation } from './genome/random.ts';
 import { randomSeed } from './rng.ts';
 import { createRenderer } from './render/scene.ts';
 import { LANE_COUNT, Race } from './race/race.ts';
+import { PARENTS_NEEDED, Selection, type PanelRefs } from './ui/selection.ts';
 
 const canvas = document.querySelector<HTMLCanvasElement>('#stage')!;
 const gridEl = document.querySelector<HTMLDivElement>('#grid')!;
@@ -21,11 +27,7 @@ const generationEl = document.querySelector<HTMLElement>('#generation b')!;
 const timerFill = document.querySelector<HTMLDivElement>('#timerfill')!;
 const hintEl = document.querySelector<HTMLDivElement>('#hint')!;
 const replayBtn = document.querySelector<HTMLButtonElement>('#replay')!;
-
-interface PanelRefs {
-  root: HTMLButtonElement;
-  distance: HTMLElement;
-}
+const breedBtn = document.querySelector<HTMLButtonElement>('#breed')!;
 
 /** Build the eight overlay panels once; only their text changes afterwards. */
 function buildPanels(): PanelRefs[] {
@@ -33,13 +35,20 @@ function buildPanels(): PanelRefs[] {
   for (let i = 0; i < LANE_COUNT; i++) {
     const root = document.createElement('button');
     root.className = 'panel';
+    root.type = 'button';
     root.dataset.lane = String(i);
+    root.setAttribute('aria-pressed', 'false');
+    root.setAttribute('aria-label', `creature ${i + 1}`);
     root.innerHTML =
       `<span class="panel-label"><span class="panel-num">${i + 1}</span>` +
       `<span class="panel-dist">0.00m</span></span>` +
-      `<span class="panel-tag">parent</span>`;
+      `<span class="panel-tag"></span>`;
     gridEl.appendChild(root);
-    panels.push({ root, distance: root.querySelector('.panel-dist')! });
+    panels.push({
+      root,
+      distance: root.querySelector('.panel-dist')!,
+      tag: root.querySelector('.panel-tag')!,
+    });
   }
   return panels;
 }
@@ -55,25 +64,45 @@ async function main(): Promise<void> {
   let generation = 1;
   let race = new Race(randomPopulation(seed, LANE_COUNT));
 
+  const selection = new Selection(panels, (picked) => {
+    breedBtn.disabled = picked.length !== PARENTS_NEEDED;
+    updateHint();
+  });
+
+  function updateHint(): void {
+    const picked = selection.chosen.length;
+    if (!race.finished) {
+      hintEl.textContent =
+        picked > 0 ? `${picked} of ${PARENTS_NEEDED} picked — the race is still running` : 'the race is running';
+      return;
+    }
+    if (picked === 0) hintEl.textContent = 'pick the two you like best';
+    else if (picked < PARENTS_NEEDED) hintEl.textContent = `pick one more (${picked} of ${PARENTS_NEEDED})`;
+    else hintEl.textContent = 'two picked — breed them, or click another to swap';
+  }
+
   function startRace(genomes = randomPopulation(seed, LANE_COUNT)): void {
     race.dispose();
     race = new Race(genomes);
-    hintEl.textContent = 'the race is running';
+    selection.clear();
     timerFill.style.opacity = '1';
+    breedBtn.disabled = true;
+    updateHint();
   }
 
   replayBtn.addEventListener('click', () => {
     // Same creatures, same result: the point of a seeded, fixed-step simulation.
-    startRace(randomPopulation(seed, LANE_COUNT));
+    startRace(race.lanes.map((lane) => lane.genome));
   });
 
-  addEventListener('keydown', (e) => {
-    if (e.code === 'KeyN') {
-      seed = randomSeed();
-      generation = 1;
-      generationEl.textContent = String(generation);
-      startRace();
-    }
+  breedBtn.addEventListener('click', () => {
+    if (!selection.complete) return;
+    // Placeholder until the next checkpoint: a fresh unrelated generation.
+    // Crossover and mutation replace this.
+    generation += 1;
+    generationEl.textContent = String(generation);
+    seed = randomSeed();
+    startRace();
   });
 
   const bufferSize = new Vector2();
@@ -86,7 +115,6 @@ async function main(): Promise<void> {
     const elapsed = (now - last) / 1000;
     last = now;
 
-    // Match the drawing buffer to the element, in device pixels.
     const width = canvas.clientWidth;
     const height = canvas.clientHeight;
     if (canvas.width !== width || canvas.height !== height) {
@@ -111,22 +139,21 @@ async function main(): Promise<void> {
 
     if (race.finished && !announced) {
       announced = true;
-      const [winner] = race.standings();
-      hintEl.textContent = winner
-        ? `finished — furthest was #${winner.lane + 1} at ${winner.distance.toFixed(2)}m`
-        : 'finished';
       timerFill.style.opacity = '0.35';
-    } else if (!race.finished) {
+      updateHint();
+    } else if (!race.finished && announced) {
       announced = false;
     }
   }
 
   requestAnimationFrame(frame);
+  updateHint();
 
   (window as unknown as Record<string, unknown>).derby = {
     get race(): Race {
       return race;
     },
+    selection,
     startRace,
   };
 }

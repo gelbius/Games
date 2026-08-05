@@ -1,0 +1,104 @@
+/**
+ * Drives the selection UI in a real browser and checks it behaves.
+ *
+ * Clicking things is the part most easily broken by a stray CSS change — an
+ * overlay that stops receiving pointer events looks perfectly fine in a
+ * screenshot.
+ *
+ * Usage: node tools/ui-check.mjs
+ */
+import { chromium } from 'playwright';
+import { createServer } from 'node:http';
+import { readFile, stat } from 'node:fs/promises';
+import { join, extname, normalize } from 'node:path';
+
+const ROOT = new URL('../dist/', import.meta.url).pathname;
+const MIME = { '.html': 'text/html', '.js': 'text/javascript', '.css': 'text/css' };
+
+const server = createServer(async (req, res) => {
+  try {
+    const rel = normalize(decodeURIComponent(new URL(req.url, 'http://x').pathname)).replace(/^(\.\.[/\\])+/, '');
+    let file = join(ROOT, rel === '/' ? 'index.html' : rel);
+    if ((await stat(file)).isDirectory()) file = join(file, 'index.html');
+    res.writeHead(200, { 'content-type': MIME[extname(file)] ?? 'application/octet-stream' });
+    res.end(await readFile(file));
+  } catch {
+    res.writeHead(404).end('not found');
+  }
+});
+await new Promise((r) => server.listen(0, r));
+const port = server.address().port;
+
+const browser = await chromium.launch({
+  executablePath: process.env.CHROMIUM_PATH ?? '/opt/pw-browsers/chromium-1194/chrome-linux/chrome',
+  args: ['--use-gl=angle', '--use-angle=swiftshader', '--enable-unsafe-swiftshader', '--no-sandbox'],
+});
+const page = await browser.newPage({ viewport: { width: 1280, height: 800 } });
+
+const errors = [];
+page.on('pageerror', (e) => errors.push(e.message));
+
+await page.goto(`http://localhost:${port}/`, { waitUntil: 'load' });
+await page.waitForSelector('.panel');
+
+const checks = [];
+const check = (name, ok, detail = '') => checks.push({ name, ok, detail });
+
+const selectedCount = () => page.locator('.panel[data-selected="1"]').count();
+const breedDisabled = () => page.locator('#breed').isDisabled();
+
+check('eight panels exist', (await page.locator('.panel').count()) === 8);
+check('breed starts disabled', await breedDisabled());
+
+await page.locator('.panel').nth(2).click();
+check('clicking a panel selects it', (await selectedCount()) === 1);
+check('breed still disabled with one pick', await breedDisabled());
+
+await page.locator('.panel').nth(5).click();
+check('second pick selects', (await selectedCount()) === 2);
+check('breed enabled at exactly two', !(await breedDisabled()));
+
+await page.screenshot({ path: process.argv[3] ?? '/tmp/ui-selected.png' });
+
+check(
+  'the two picks are labelled A and B',
+  (await page.locator('.panel[data-selected="1"] .panel-tag').allTextContents()).join('|') === 'parent A|parent B',
+);
+
+// A third click should swap out the oldest pick, not be ignored and not make three.
+await page.locator('.panel').nth(7).click();
+check('a third pick still leaves exactly two', (await selectedCount()) === 2);
+// Picks were lanes 2 then 5; picking lane 7 should drop lane 2 and keep 5 and 7.
+const afterThird = await page
+  .locator('.panel[data-selected="1"]')
+  .evaluateAll((els) => els.map((e) => e.dataset.lane).join(','));
+check('the third pick replaced the oldest', afterThird === '5,7', `got ${afterThird}`);
+
+// Clicking a selected panel again deselects it.
+await page.locator('.panel').nth(5).click();
+check('clicking a pick again deselects', (await selectedCount()) === 1);
+check('breed disabled again', await breedDisabled());
+
+// Keyboard selection.
+await page.keyboard.press('1');
+check('number keys select', (await selectedCount()) === 2);
+
+// Breeding resets the picks and bumps the generation.
+await page.locator('#breed').click();
+await page.waitForTimeout(300);
+check('breeding clears the picks', (await selectedCount()) === 0);
+check('generation advanced', (await page.locator('#generation b').textContent()) === '2');
+
+check('no page errors', errors.length === 0, errors[0] ?? '');
+
+let failed = 0;
+for (const c of checks) {
+  if (!c.ok) failed++;
+  console.log(`${c.ok ? 'ok  ' : 'FAIL'}  ${c.name}${c.detail ? `  — ${c.detail}` : ''}`);
+}
+console.log(`\n${checks.length - failed}/${checks.length} passed`);
+
+await page.screenshot({ path: process.argv[2] ?? '/tmp/ui-check.png' });
+await browser.close();
+server.close();
+process.exit(failed ? 1 : 0);

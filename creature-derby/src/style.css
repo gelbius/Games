@@ -182,19 +182,50 @@ body {
   position: absolute;
   top: 8px;
   right: 8px;
-  padding: 2px 7px;
+  padding: 2px 8px;
   border-radius: 999px;
   font-size: 11px;
   font-weight: 640;
+  letter-spacing: 0.2px;
   pointer-events: none;
   opacity: 0;
+  transition: opacity 0.15s;
+}
+
+.panel[data-selected='1'] .panel-tag,
+.panel[data-parent='1'] .panel-tag {
+  opacity: 1;
+}
+
+.panel[data-selected='1'] .panel-tag {
+  background: rgba(111, 211, 199, 0.16);
+  border: 1px solid rgba(111, 211, 199, 0.5);
+  color: var(--accent);
 }
 
 .panel[data-parent='1'] .panel-tag {
-  opacity: 1;
-  background: rgba(242, 193, 78, 0.15);
-  border: 1px solid rgba(242, 193, 78, 0.45);
+  background: rgba(242, 193, 78, 0.13);
+  border: 1px solid rgba(242, 193, 78, 0.4);
   color: var(--gold);
+}
+
+/* Selection state. The chosen two are the whole game, so they are unmissable. */
+.panel:hover:not([data-selected='1']) {
+  background: rgba(232, 237, 244, 0.04);
+}
+
+.panel[data-selected='1'] {
+  background: rgba(111, 211, 199, 0.08);
+  border-color: var(--accent);
+}
+
+.panel[data-selected='1'] .panel-num {
+  background: var(--accent);
+  color: var(--accent-ink);
+}
+
+.panel:focus-visible {
+  border-color: var(--accent);
 }
 
 /* ------------------------------------------------------------------ footer */
@@ -236,4 +267,21 @@ body {
 .btn:disabled {
   opacity: 0.4;
   cursor: default;
+}
+
+.btn.primary {
+  background: var(--accent);
+  border-color: var(--accent);
+  color: var(--accent-ink);
+  font-weight: 640;
+}
+
+.btn.primary:hover:not(:disabled) {
+  filter: brightness(1.08);
+}
+
+.btn.primary:disabled {
+  background: var(--panel);
+  border-color: var(--line);
+  color: var(--ink);
 }
