@@ -210,6 +210,51 @@ export function centreOfMass(creature: CreatureHandle, out: { x: number; y: numb
   out.z = z / total;
 }
 
+/**
+ * Measure what the camera needs: where the creature is, how much room it takes
+ * up right now, and how fast it is going.
+ *
+ * The radius is measured from the parts' current positions rather than from the
+ * resting skeleton, because a creature that has just thrown its limbs out needs
+ * a wider shot than the same creature standing still — and a creature that has
+ * face-planted needs a tighter one.
+ */
+export function measureCreature(
+  creature: CreatureHandle,
+  out: { centre: { x: number; y: number; z: number }; radius: number; velocity: { x: number; y: number; z: number } },
+): void {
+  centreOfMass(creature, out.centre);
+
+  let radius = 0;
+  let vx = 0;
+  let vy = 0;
+  let vz = 0;
+  let total = 0;
+
+  for (let i = 0; i < creature.bodies.length; i++) {
+    const body = creature.bodies[i]!;
+    const t = body.translation();
+    const half = creature.skeleton.parts[i]?.halfExtents;
+
+    // Distance to the far corner of this part, so nothing pokes out of frame.
+    const reach = half ? Math.hypot(half[0], half[1], half[2]) : 0;
+    radius = Math.max(radius, Math.hypot(t.x - out.centre.x, t.y - out.centre.y, t.z - out.centre.z) + reach);
+
+    const m = body.mass();
+    const v = body.linvel();
+    vx += v.x * m;
+    vy += v.y * m;
+    vz += v.z * m;
+    total += m;
+  }
+
+  if (total <= 0) total = 1;
+  out.radius = radius;
+  out.velocity.x = vx / total;
+  out.velocity.y = vy / total;
+  out.velocity.z = vz / total;
+}
+
 /** Remove every body and joint belonging to this creature from the world. */
 export function despawnCreature(world: RAPIER.World, creature: CreatureHandle): void {
   // Removing a body removes the joints attached to it, so the joints do not

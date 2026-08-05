@@ -1,14 +1,15 @@
 /**
- * Checkpoint 4: the creature moves.
+ * Checkpoint 5: the broadcast camera.
  *
- * Every joint now follows a sine wave — its own frequency, its own swing size,
- * its own starting point in the cycle. Nothing here knows what walking is. The
- * gait is what falls out when a dozen oscillators push against the ground.
+ * The creature is the same as before; what changed is that the shot now holds
+ * it. Track a creature that sprints, staggers and cartwheels, keep the horizon
+ * level, widen when it throws its limbs out, and never sink through the floor.
  *
- * Press SPACE for the next creature, R to replay the current one.
+ * SPACE next creature · R replay · C toggle manual orbit
  */
 
 import * as THREE from 'three';
+import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
 import RAPIER from '@dimforge/rapier3d-compat';
 
 import { expand } from './genome/expand.ts';
@@ -16,10 +17,11 @@ import { randomGenome } from './genome/random.ts';
 import { encodeGenome } from './genome/codec.ts';
 import { createStage } from './render/scene.ts';
 import { createCreatureView, disposeCreatureView, syncCreatureView } from './render/creatureMesh.ts';
+import { BroadcastCamera, type Subject } from './render/broadcastCamera.ts';
 import {
-  centreOfMass,
   despawnCreature,
   driveCreature,
+  measureCreature,
   spawnCreature,
   type CreatureHandle,
 } from './sim/creature.ts';
@@ -32,32 +34,52 @@ async function main(): Promise<void> {
   await RAPIER.init();
 
   const { renderer, scene } = createStage(canvas);
-  const camera = new THREE.PerspectiveCamera(45, 1, 0.05, 400);
+  const camera = new THREE.PerspectiveCamera(45, 1, 0.05, 500);
+  const rig = new BroadcastCamera(camera);
+
+  // The manual fallback, for when the automatic shot is not what you want to
+  // look at. Disabled until asked for, so it never fights the rig.
+  const orbit = new OrbitControls(camera, canvas);
+  orbit.enableDamping = true;
+  orbit.dampingFactor = 0.08;
+  orbit.enabled = false;
+  let manual = false;
 
   const world = new RAPIER.World(GRAVITY);
   world.timestep = FIXED_DT;
 
   const groundBody = world.createRigidBody(RAPIER.RigidBodyDesc.fixed().setTranslation(0, -0.5, 0));
-  const groundCollider = RAPIER.ColliderDesc.cuboid(300, 0.5, 300).setFriction(1.1);
+  const groundCollider = RAPIER.ColliderDesc.cuboid(400, 0.5, 400).setFriction(1.1);
   groundCollider.setCollisionGroups(GROUND_GROUPS);
   world.createCollider(groundCollider, groundBody);
 
   let creature: CreatureHandle | null = null;
   let view: ReturnType<typeof createCreatureView> | null = null;
   let seed = Number(new URLSearchParams(location.search).get('seed') ?? 3) || 0;
-
   let label = '';
-  let viewDistance = 3;
+  let simTime = 0;
   let startZ = 0;
 
-  /**
-   * Simulated time, not wall-clock time. The gait advances by exactly FIXED_DT
-   * per physics step, so the same creature walks identically on a 144Hz monitor
-   * and a 60Hz one.
-   */
-  let simTime = 0;
+  // Reused every frame rather than reallocated, so the camera does not generate
+  // garbage sixty times a second.
+  const measured = {
+    centre: { x: 0, y: 0, z: 0 },
+    radius: 1,
+    velocity: { x: 0, y: 0, z: 0 },
+  };
+  const subject: Subject = {
+    centre: new THREE.Vector3(),
+    radius: 1,
+    velocity: new THREE.Vector3(),
+  };
 
-  const com = { x: 0, y: 0, z: 0 };
+  function readSubject(c: CreatureHandle): Subject {
+    measureCreature(c, measured);
+    subject.centre.set(measured.centre.x, measured.centre.y, measured.centre.z);
+    subject.velocity.set(measured.velocity.x, measured.velocity.y, measured.velocity.z);
+    subject.radius = measured.radius;
+    return subject;
+  }
 
   function show(nextSeed: number): void {
     if (creature) despawnCreature(world, creature);
@@ -74,9 +96,11 @@ async function main(): Promise<void> {
     scene.add(view.group);
 
     simTime = 0;
-    centreOfMass(creature, com);
-    startZ = com.z;
-    viewDistance = Math.max(skeleton.radius * 5, 2);
+    startZ = 0;
+    startZ = readSubject(creature).centre.z;
+
+    // Cut, do not glide, when a different creature appears.
+    rig.reset(readSubject(creature));
 
     label =
       `seed <b>${seed}</b> · ${skeleton.parts.length} parts · ${skeleton.joints.length} joints · ` +
@@ -85,12 +109,36 @@ async function main(): Promise<void> {
 
   show(seed);
 
+  // A handle on the running game, for tools/camera-check.mjs and for poking at
+  // things from the browser console.
+  (window as unknown as Record<string, unknown>).derby = {
+    camera,
+    show,
+    get time(): number {
+      return simTime;
+    },
+    get subject(): Subject | null {
+      return creature ? readSubject(creature) : null;
+    },
+  };
+
   addEventListener('keydown', (e) => {
     if (e.code === 'Space') {
       e.preventDefault();
       show(seed + 1);
     } else if (e.code === 'KeyR') {
       show(seed);
+    } else if (e.code === 'KeyC') {
+      manual = !manual;
+      orbit.enabled = manual;
+      if (manual && creature) {
+        // Hand the manual controls the shot the rig had, so toggling does not
+        // teleport the view.
+        orbit.target.copy(readSubject(creature).centre);
+        orbit.update();
+      } else if (creature) {
+        rig.reset(readSubject(creature));
+      }
     }
   });
 
@@ -111,8 +159,9 @@ async function main(): Promise<void> {
     requestAnimationFrame(frame);
     resize();
 
-    accumulator += Math.min((now - last) / 1000, 0.25);
+    const elapsed = Math.min((now - last) / 1000, 0.25);
     last = now;
+    accumulator += elapsed;
 
     while (accumulator >= FIXED_DT) {
       if (creature) driveCreature(creature, simTime);
@@ -123,17 +172,20 @@ async function main(): Promise<void> {
 
     if (view && creature) {
       syncCreatureView(view, creature);
-      centreOfMass(creature, com);
+      const s = readSubject(creature);
 
-      // A placeholder follow: enough to keep the creature on screen while the
-      // gait is being judged. The real broadcast rig is the next checkpoint.
-      camera.position.set(com.x + viewDistance * 0.8, com.y + viewDistance * 0.6, com.z + viewDistance);
-      camera.lookAt(com.x, com.y, com.z);
+      if (manual) {
+        // Manual orbit still follows the creature; only the angle is yours.
+        orbit.target.lerp(s.centre, 0.12);
+        orbit.update();
+      } else {
+        rig.update(s, elapsed);
+      }
 
-      const travelled = com.z - startZ;
       status.innerHTML =
         `${label}<br><span style="opacity:.65">t ${simTime.toFixed(1)}s / ${RACE_SECONDS}s · ` +
-        `travelled ${travelled.toFixed(2)}m · SPACE next · R replay</span>`;
+        `travelled ${(s.centre.z - startZ).toFixed(2)}m · spread ${s.radius.toFixed(2)}m · ` +
+        `camera ${manual ? '<b>manual</b>' : 'auto'} · SPACE next · R replay · C camera</span>`;
     }
 
     renderer.render(scene, camera);
