@@ -19,10 +19,10 @@
 
 import {
   type EdgeGene,
-  type Face,
   type Genome,
   type JointGene,
   type PartGene,
+  type Swing,
   type Vec3,
   MAX_GENOME_EDGES,
   MAX_GENOME_NODES,
@@ -68,14 +68,13 @@ export function quantize(g: Genome): Genome {
       (e): EdgeGene => ({
         from: e.from | 0,
         to: e.to | 0,
-        face: e.face,
+        restAngle: q(e.restAngle),
         u: q(e.u),
         v: q(e.v),
-        twist: qVec(e.twist),
         scale: q(e.scale),
         reflect: !!e.reflect,
         joint: {
-          axis: e.joint.axis,
+          swing: e.joint.swing,
           limit: q(e.joint.limit),
           frequency: q(e.joint.frequency),
           amplitude: q(e.joint.amplitude),
@@ -89,11 +88,14 @@ export function quantize(g: Genome): Genome {
 // --------------------------------------------------------------- compact form
 
 type CompactPart = [number, number, number, number, number];
+
+/** [from, to, restAngle, u, v, scale, reflect, swing, limit, frequency, amplitude, phase] */
 type CompactEdge = [
-  number, number, number, number, number,
-  number, number, number, number, number,
-  number, number, number, number, number,
+  number, number, number, number, number, number,
+  number, number, number, number, number, number,
 ];
+
+const EDGE_FIELDS = 12;
 
 interface CompactGenome {
   v: 1;
@@ -111,9 +113,8 @@ function toCompact(g: Genome): CompactGenome {
     r: c.root,
     p: c.parts.map((p): CompactPart => [p.size[0], p.size[1], p.size[2], p.recursionLimit, p.hue]),
     e: c.edges.map((e): CompactEdge => [
-      e.from, e.to, e.face, e.u, e.v,
-      e.twist[0], e.twist[1], e.twist[2], e.scale, e.reflect ? 1 : 0,
-      e.joint.axis, e.joint.limit, e.joint.frequency, e.joint.amplitude, e.joint.phase,
+      e.from, e.to, e.restAngle, e.u, e.v, e.scale, e.reflect ? 1 : 0,
+      e.joint.swing, e.joint.limit, e.joint.frequency, e.joint.amplitude, e.joint.phase,
     ]),
   };
 }
@@ -159,27 +160,22 @@ function fromCompact(c: unknown): Genome {
   });
 
   const edges = o.e.map((raw, i): EdgeGene => {
-    if (!Array.isArray(raw) || raw.length !== 15) throw new TypeError(`edge ${i} is malformed`);
+    if (!Array.isArray(raw) || raw.length !== EDGE_FIELDS) throw new TypeError(`edge ${i} is malformed`);
     const joint: JointGene = {
-      axis: intIn(raw[10], 0, 2, `edge ${i} joint axis`) as 0 | 1 | 2,
-      limit: num(raw[11], `edge ${i} joint limit`),
-      frequency: num(raw[12], `edge ${i} frequency`),
-      amplitude: num(raw[13], `edge ${i} amplitude`),
-      phase: num(raw[14], `edge ${i} phase`),
+      swing: intIn(raw[7], 0, 1, `edge ${i} swing`) as Swing,
+      limit: num(raw[8], `edge ${i} joint limit`),
+      frequency: num(raw[9], `edge ${i} frequency`),
+      amplitude: num(raw[10], `edge ${i} amplitude`),
+      phase: num(raw[11], `edge ${i} phase`),
     };
     return {
       from: intIn(raw[0], 0, partCount - 1, `edge ${i} from`),
       to: intIn(raw[1], 0, partCount - 1, `edge ${i} to`),
-      face: intIn(raw[2], 0, 5, `edge ${i} face`) as Face,
+      restAngle: num(raw[2], `edge ${i} rest angle`),
       u: num(raw[3], `edge ${i} u`),
       v: num(raw[4], `edge ${i} v`),
-      twist: [
-        num(raw[5], `edge ${i} twist x`),
-        num(raw[6], `edge ${i} twist y`),
-        num(raw[7], `edge ${i} twist z`),
-      ],
-      scale: num(raw[8], `edge ${i} scale`),
-      reflect: raw[9] === 1 || raw[9] === true,
+      scale: num(raw[5], `edge ${i} scale`),
+      reflect: raw[6] === 1 || raw[6] === true,
       joint,
     };
   });
