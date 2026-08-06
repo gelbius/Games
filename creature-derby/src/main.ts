@@ -24,6 +24,7 @@ import { LANE_COUNT, Race } from './race/race.ts';
 import { PARENTS_NEEDED, Selection, type PanelRefs } from './ui/selection.ts';
 import { Lineage } from './ui/lineage.ts';
 import { placeLabel, Ranking } from './ui/ranking.ts';
+import { forgetIntro, Intro } from './ui/intro.ts';
 import { clearUrl, copyText, genomeFromUrl, linkTo } from './ui/share.ts';
 
 const canvas = document.querySelector<HTMLCanvasElement>('#stage')!;
@@ -42,6 +43,9 @@ const lineageBar = document.querySelector<HTMLElement>('#lineagebar')!;
 const lineageEl = document.querySelector<HTMLDivElement>('#lineage')!;
 const lineageToggle = document.querySelector<HTMLButtonElement>('#lineagetoggle')!;
 const lineageClose = document.querySelector<HTMLButtonElement>('#lineageclose')!;
+const introDialog = document.querySelector<HTMLDialogElement>('#intro')!;
+const introGo = document.querySelector<HTMLButtonElement>('#introgo')!;
+const helpBtn = document.querySelector<HTMLButtonElement>('#help')!;
 
 /** Plain words for the mutation slider. "0.35" means nothing to anybody. */
 function describeRate(rate: number): string {
@@ -299,6 +303,13 @@ async function main(): Promise<void> {
   if (openingMessage) flash(openingMessage, 0);
   else updateHint();
 
+  // Explain the game to anyone seeing it for the first time, and restart the
+  // race when they close the panel so they actually get to watch one.
+  const intro = new Intro(introDialog, introGo, helpBtn, {
+    onFirstDismiss: () => startRace(race.lanes.map((lane) => lane.genome), survivors),
+  });
+  intro.openIfNew();
+
   // A handle on the running game, for the tools in tools/ and for poking at
   // things from the browser console.
   (window as unknown as Record<string, unknown>).derby = {
@@ -307,6 +318,8 @@ async function main(): Promise<void> {
     },
     selection,
     lineage,
+    intro,
+    forgetIntro,
     startRace,
   };
   // Used by tools/ui-check.mjs to build a share link without duplicating the
