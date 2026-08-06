@@ -55,9 +55,40 @@ what the sender saw, on any machine.
 ## Running it on your own computer
 
 You will need [Node.js](https://nodejs.org/) version 20 or newer. Everything
-below is typed into a terminal, from inside this `creature-derby` folder.
+below is typed into a terminal.
+
+### Getting the code
+
+If you have never cloned this repository before:
 
 ```bash
+git clone https://github.com/gelbius/Games.git
+cd Games
+```
+
+If you already have it, make sure it is up to date:
+
+```bash
+cd ~/Games      # wherever you keep it
+git pull
+```
+
+**If `creature-derby` does not exist yet**, the game is still on a branch that
+has not been merged. Fetch it and switch to it:
+
+```bash
+git fetch origin
+git checkout claude/creature-derby-game-9s85ns
+```
+
+Switching branches swaps the files in the folder, which is why `creature-derby`
+appears and disappears. Nothing is lost either way — `git checkout main` puts it
+back the way it was.
+
+### Starting it
+
+```bash
+cd creature-derby
 npm install     # once, to fetch the libraries
 npm run dev     # start it up
 ```
@@ -66,6 +97,13 @@ That prints a web address — usually <http://localhost:5173>. Open it in a
 browser.
 
 To stop it, press **Ctrl+C** in the terminal.
+
+> **`cd: no such file or directory: creature-derby`** means you are in the wrong
+> folder, or the branch above has not been checked out. Run `pwd` to see where
+> you are: you want to be in `Games`, not in `Games/gotcha`.
+
+> **`Could not read package.json`** means the same thing — `npm` was run
+> somewhere that has no Node project in it.
 
 ### The other commands
 
