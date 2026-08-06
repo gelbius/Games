@@ -177,6 +177,58 @@ const emptyText = (await page4.locator('.lineage-empty').textContent()) ?? '';
 check('an empty lineage explains itself', emptyText.includes('Pick two'), `got "${emptyText.slice(0, 40)}"`);
 check('the empty message is actually visible', await page4.locator('.lineage-empty').isVisible());
 
+// ------------------------------------------------- retina / pixel ratio
+// This exists because a real bug shipped past every other check in this file.
+// three.js scales viewport and scissor rectangles by the renderer's pixel ratio
+// itself, so handing it device pixels doubles them a second time: the panels
+// are drawn at twice their size and six of the eight fall off the canvas. At
+// deviceScaleFactor 1 the two units are identical and the bug is invisible,
+// which is exactly why it survived. The layout is now asserted at 2x and 3x
+// too.
+for (const scale of [1, 2, 3]) {
+  const p = await browser.newPage({ viewport: { width: 1280, height: 800 }, deviceScaleFactor: scale });
+  const errs = [];
+  p.on('pageerror', (e) => errs.push(e.message));
+  await p.goto(`http://localhost:${port}/`, { waitUntil: 'load' });
+  await p.waitForFunction('window.derby && window.derby.race.viewports.length === 8');
+
+  const { rects, cssWidth, cssHeight } = await p.evaluate(() => {
+    const canvas = document.querySelector('#stage');
+    return {
+      rects: window.derby.race.viewports.map((v) => ({ ...v })),
+      cssWidth: canvas.clientWidth,
+      cssHeight: canvas.clientHeight,
+    };
+  });
+
+  check(`eight panel rectangles at ${scale}x`, rects.length === 8, `got ${rects.length}`);
+
+  // Every rectangle must fit inside the canvas. Under the bug they run to twice
+  // the canvas width and height.
+  const escaped = rects.filter(
+    (r) => r.x < 0 || r.y < 0 || r.x + r.width > cssWidth + 1 || r.y + r.height > cssHeight + 1,
+  );
+  check(
+    `no panel falls off the canvas at ${scale}x`,
+    escaped.length === 0,
+    escaped.length ? `${escaped.length} of 8 outside ${cssWidth}x${cssHeight}` : '',
+  );
+
+  // And together they must cover it: eight panels each a quarter wide and half
+  // high tile the canvas exactly.
+  const covered = rects.reduce((sum, r) => sum + r.width * r.height, 0);
+  const ratio = covered / (cssWidth * cssHeight);
+  check(`the panels tile the canvas at ${scale}x`, ratio > 0.98 && ratio < 1.02, `covered ${(ratio * 100).toFixed(1)}%`);
+
+  // No two panels may sit on top of each other.
+  const corners = new Set(rects.map((r) => `${r.x},${r.y}`));
+  check(`the eight panels are in eight places at ${scale}x`, corners.size === 8, `${corners.size} distinct origins`);
+
+  check(`no errors at ${scale}x`, errs.length === 0, errs[0] ?? '');
+  if (scale === 2) await p.screenshot({ path: process.argv[5] ?? '/tmp/ui-retina.png' });
+  await p.close();
+}
+
 check('no page errors', errors.length === 0, errors[0] ?? '');
 
 let failed = 0;

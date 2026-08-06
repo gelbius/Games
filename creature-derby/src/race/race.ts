@@ -22,6 +22,16 @@ export class Race {
   private steps = 0;
   private accumulator = 0;
 
+  /**
+   * The rectangles the last render used, in the units render() was given.
+   *
+   * Kept because the panel layout is worth being able to inspect: getting these
+   * wrong puts most of the grid off the canvas while every other part of the
+   * app carries on working perfectly, so it is not a failure that announces
+   * itself. tools/ui-check.mjs asserts these tile the canvas.
+   */
+  readonly viewports: { x: number; y: number; width: number; height: number }[] = [];
+
   constructor(genomes: readonly Genome[]) {
     this.lanes = genomes.slice(0, LANE_COUNT).map((g) => new Lane(g));
   }
@@ -66,12 +76,20 @@ export class Race {
     for (const lane of this.lanes) lane.present(frameSeconds);
   }
 
-  /** Draw all eight panels into one canvas. */
+  /**
+   * Draw all eight panels into one canvas.
+   *
+   * `width` and `height` are CSS pixels, not drawing-buffer pixels. three.js
+   * scales viewport and scissor rectangles by the renderer's pixel ratio
+   * internally, so passing device pixels here would double them a second time
+   * and throw most of the grid off the canvas on any retina display.
+   */
   render(renderer: THREE.WebGLRenderer, width: number, height: number): void {
     const panelWidth = Math.floor(width / GRID_COLUMNS);
     const panelHeight = Math.floor(height / GRID_ROWS);
 
     renderer.setScissorTest(true);
+    this.viewports.length = 0;
 
     for (let i = 0; i < this.lanes.length; i++) {
       const lane = this.lanes[i]!;
@@ -84,6 +102,7 @@ export class Race {
 
       renderer.setViewport(x, y, panelWidth, panelHeight);
       renderer.setScissor(x, y, panelWidth, panelHeight);
+      this.viewports.push({ x, y, width: panelWidth, height: panelHeight });
 
       if (lane.camera.aspect !== panelWidth / panelHeight) {
         lane.camera.aspect = panelWidth / panelHeight;

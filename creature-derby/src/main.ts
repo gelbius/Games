@@ -13,7 +13,6 @@
  * After Karl Sims, "Evolving Virtual Creatures", SIGGRAPH 1994. See CREDITS.md.
  */
 
-import { Vector2 } from 'three';
 import RAPIER from '@dimforge/rapier3d-compat';
 
 import { randomPopulation } from './genome/random.ts';
@@ -219,7 +218,6 @@ async function main(): Promise<void> {
     }
   });
 
-  const bufferSize = new Vector2();
   let last = performance.now();
   let announced = false;
 
@@ -238,10 +236,11 @@ async function main(): Promise<void> {
     race.advance(elapsed);
     race.present(elapsed);
 
-    // Panels are laid out in drawing-buffer pixels, which on a retina display
-    // are not the same as CSS pixels.
-    renderer.getDrawingBufferSize(bufferSize);
-    race.render(renderer, bufferSize.x, bufferSize.y);
+    // CSS pixels, deliberately, NOT drawing-buffer pixels. three.js multiplies
+    // viewport and scissor rectangles by the pixel ratio itself, so passing
+    // device pixels here doubles them again on any retina display: the panels
+    // are drawn at twice their size and six of the eight fall off the canvas.
+    race.render(renderer, width, height);
 
     clockEl.textContent = `${race.seconds.toFixed(1)}s`;
     timerFill.style.width = `${race.progress * 100}%`;
