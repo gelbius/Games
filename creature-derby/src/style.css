@@ -471,3 +471,35 @@ body {
     width: auto;
   }
 }
+
+/* ---------------------------------------------------------------- placings */
+
+/*
+ * Who is currently ahead. Sits with the distance rather than in the badge
+ * corner, because it is a fact about the number next to it — and because the
+ * corner badge means something entirely different (which creature the player
+ * picked) and the two must never be confused for one another.
+ */
+.panel-place {
+  display: none;
+  padding: 1px 6px;
+  border-radius: 999px;
+  font-size: 10px;
+  font-weight: 700;
+  letter-spacing: 0.3px;
+}
+
+.panel-place[data-place='1'],
+.panel-place[data-place='2'] {
+  display: inline-block;
+}
+
+.panel-place[data-place='1'] {
+  background: var(--gold);
+  color: #2a1f05;
+}
+
+.panel-place[data-place='2'] {
+  background: rgba(232, 237, 244, 0.72);
+  color: #14181f;
+}

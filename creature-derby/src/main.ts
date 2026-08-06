@@ -23,6 +23,7 @@ import { createRenderer } from './render/scene.ts';
 import { LANE_COUNT, Race } from './race/race.ts';
 import { PARENTS_NEEDED, Selection, type PanelRefs } from './ui/selection.ts';
 import { Lineage } from './ui/lineage.ts';
+import { placeLabel, Ranking } from './ui/ranking.ts';
 import { clearUrl, copyText, genomeFromUrl, linkTo } from './ui/share.ts';
 
 const canvas = document.querySelector<HTMLCanvasElement>('#stage')!;
@@ -63,6 +64,7 @@ function buildPanels(): PanelRefs[] {
     root.setAttribute('aria-label', `creature ${i + 1}`);
     root.innerHTML =
       `<span class="panel-label"><span class="panel-num">${i + 1}</span>` +
+      `<span class="panel-place"></span>` +
       `<span class="panel-dist">0.00m</span></span>` +
       `<span class="panel-tag"></span>`;
     gridEl.appendChild(root);
@@ -70,6 +72,7 @@ function buildPanels(): PanelRefs[] {
       root,
       distance: root.querySelector('.panel-dist')!,
       tag: root.querySelector('.panel-tag')!,
+      place: root.querySelector('.panel-place')!,
     });
   }
   return panels;
@@ -81,6 +84,7 @@ async function main(): Promise<void> {
 
   const { renderer } = createRenderer(canvas);
   const panels = buildPanels();
+  const ranking = new Ranking();
 
   let seed = randomSeed();
   let generation = 1;
@@ -166,6 +170,7 @@ async function main(): Promise<void> {
     timerFill.style.opacity = '1';
     breedBtn.disabled = true;
     shareBtn.disabled = true;
+    ranking.reset();
     updateHint();
   }
 
@@ -245,9 +250,19 @@ async function main(): Promise<void> {
     clockEl.textContent = `${race.seconds.toFixed(1)}s`;
     timerFill.style.width = `${race.progress * 100}%`;
 
+    ranking.update(race.lanes.map((lane) => lane.distance));
     for (let i = 0; i < panels.length; i++) {
       const lane = race.lanes[i];
-      if (lane) panels[i]!.distance.textContent = `${lane.distance.toFixed(2)}m`;
+      const panel = panels[i]!;
+      if (!lane) continue;
+      panel.distance.textContent = `${lane.distance.toFixed(2)}m`;
+
+      const place = ranking.placeOf(i);
+      const label = placeLabel(place);
+      if (panel.place.textContent !== label) {
+        panel.place.textContent = label;
+        panel.place.dataset.place = place ? String(place) : '';
+      }
     }
 
     if (race.finished && !announced) {

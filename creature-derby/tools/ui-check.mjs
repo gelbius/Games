@@ -111,7 +111,30 @@ check(
   `parents were lanes ${pickedLanes.join(' and ')}`,
 );
 check('the six offspring are not just copies of the parents', new Set(after).size >= 6, `${new Set(after).size} distinct`);
-check('the two survivors are marked', (await page.locator('.panel[data-parent="1"]').count()) === 2);
+check('the two carried-over parents are marked', (await page.locator('.panel[data-parent="1"]').count()) === 2);
+check(
+  'the carried-over badge does not claim anything about speed',
+  (await page.locator('.panel[data-parent="1"] .panel-tag').first().textContent()) === 'your pick',
+);
+
+// Live placings: exactly one 1st and one 2nd, once the race is under way.
+await page.waitForFunction('window.derby.race.lanes.some((l) => l.distance > 0.1)', null, { timeout: 20000 });
+const places = await page
+  .locator('.panel-place')
+  .evaluateAll((els) => els.map((e) => e.textContent).filter(Boolean));
+check('exactly one leader and one runner-up', places.filter((p) => p === '1st').length === 1 &&
+  places.filter((p) => p === '2nd').length === 1, `got ${JSON.stringify(places)}`);
+check(
+  'the leader really is the furthest',
+  await page.evaluate(() => {
+    const panels = [...document.querySelectorAll('.panel')];
+    const leader = panels.findIndex((p) => p.querySelector('.panel-place')?.textContent === '1st');
+    const distances = window.derby.race.lanes.map((l) => l.distance);
+    const furthest = distances.indexOf(Math.max(...distances));
+    // Hysteresis allows the badge to lag a close pass, but not by much.
+    return Math.abs(distances[leader] - distances[furthest]) < 0.05;
+  }),
+);
 
 // A second generation, to prove the loop actually loops.
 await page.locator('.panel').nth(0).click();

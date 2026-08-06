@@ -14,13 +14,18 @@ export interface PanelRefs {
   root: HTMLButtonElement;
   distance: HTMLElement;
   tag: HTMLElement;
+  /** Shows "1st" or "2nd" while the race runs. Owned by the Ranking readout. */
+  place: HTMLElement;
 }
 
 export class Selection {
   /** Lane indices, in the order they were picked. */
   private picked: number[] = [];
 
-  /** Lanes carried over unchanged from the previous generation. */
+  /**
+   * Lanes carried over unchanged from the previous generation — the two the
+   * player picked. Nothing to do with how fast anything is.
+   */
   private inherited = new Set<number>();
 
   constructor(
@@ -86,7 +91,11 @@ export class Selection {
       panel.root.setAttribute('aria-pressed', String(isPicked));
 
       if (isPicked) panel.tag.textContent = rank === 0 ? 'parent A' : 'parent B';
-      else if (this.inherited.has(index)) panel.tag.textContent = 'survivor';
+      // Deliberately not "survivor" or anything else that hints at performance.
+      // These two are the creatures the player chose last round, carried through
+      // unmutated, and that is all this badge has ever meant. How well they are
+      // doing is shown separately, by the placing in the corner label.
+      else if (this.inherited.has(index)) panel.tag.textContent = 'your pick';
       else panel.tag.textContent = '';
     });
   }
