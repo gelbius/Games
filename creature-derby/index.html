@@ -29,22 +29,42 @@
       </main>
 
       <section id="lineagebar" hidden>
-        <h2 class="lineage-title">Lineage</h2>
+        <div class="lineage-head">
+          <h2 class="lineage-title">Lineage</h2>
+          <span class="lineage-hint">swipe to see earlier generations</span>
+          <button id="lineageclose" class="lineage-close" type="button">Back to the race</button>
+        </div>
         <div id="lineage"></div>
       </section>
 
       <footer id="controls">
-        <div id="hint">the race is running</div>
-        <div class="spacer"></div>
-        <label id="mutation" title="How much the offspring differ from their parents">
-          <span class="k">mutation</span>
-          <input id="rate" type="range" min="0" max="100" value="35" />
-          <output id="ratelabel">tame</output>
-        </label>
-        <button id="share" class="btn" disabled title="Copy a link to the creature you picked first">Share</button>
-        <button id="lineagetoggle" class="btn" aria-expanded="false">Lineage</button>
-        <button id="replay" class="btn">Replay</button>
-        <button id="breed" class="btn primary" disabled>Breed the next generation</button>
+        <div id="controlrow">
+          <div id="hint">the race is running</div>
+          <div class="spacer"></div>
+          <label id="mutation" title="How much the offspring differ from their parents">
+            <span class="k">mutation</span>
+            <input id="rate" type="range" min="0" max="100" value="35" />
+            <output id="ratelabel">tame</output>
+          </label>
+          <button id="share" class="btn" disabled title="Copy a link to the creature you picked first">
+            Share
+          </button>
+          <button id="lineagetoggle" class="btn" aria-expanded="false">Lineage</button>
+          <button id="replay" class="btn">Replay</button>
+          <button id="breed" class="btn primary" disabled>Breed the next generation</button>
+        </div>
+        <nav id="credits" aria-label="Credits and source">
+          <a
+            href="https://www.karlsims.com/evolved-virtual-creatures.html"
+            target="_blank"
+            rel="noopener noreferrer"
+            >After Karl Sims, <i>Evolving Virtual Creatures</i> (1994)</a
+          >
+          <span aria-hidden="true">·</span>
+          <a href="https://github.com/gelbius/Games" target="_blank" rel="noopener noreferrer"
+            >Source on GitHub</a
+          >
+        </nav>
       </footer>
     </div>
     <script type="module" src="/src/main.ts"></script>

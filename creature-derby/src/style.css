@@ -245,12 +245,24 @@ body {
 
 /* ------------------------------------------------------------------ footer */
 
+/*
+ * Two rows, always. The credits are given a line of their own rather than
+ * being squeezed in beside the buttons: at desktop widths their extra width
+ * pushed the primary button onto a second row by itself, which looked broken.
+ * A fixed two-row footer behaves the same at every width.
+ */
 #controls {
+  display: flex;
+  flex-direction: column;
+  gap: 7px;
+  padding: 10px 16px;
+  border-top: 1px solid var(--line);
+}
+
+#controlrow {
   display: flex;
   align-items: center;
   gap: 12px;
-  padding: 10px 16px;
-  border-top: 1px solid var(--line);
 }
 
 .spacer {
@@ -260,6 +272,33 @@ body {
 #hint {
   color: var(--dim);
   font-size: 13px;
+}
+
+#credits {
+  display: flex;
+  align-items: baseline;
+  flex-wrap: wrap;
+  gap: 7px;
+  font-size: 12px;
+  color: rgba(139, 151, 168, 0.65);
+}
+
+#credits a {
+  color: var(--dim);
+  text-decoration: none;
+  border-bottom: 1px solid rgba(139, 151, 168, 0.3);
+  transition: color 0.15s, border-color 0.15s;
+}
+
+#credits a:hover,
+#credits a:focus-visible {
+  color: var(--accent);
+  border-bottom-color: var(--accent);
+  outline: none;
+}
+
+#credits i {
+  font-style: italic;
 }
 
 .btn {
@@ -360,6 +399,22 @@ body {
   border-top: 1px solid var(--line);
   padding: 10px 16px 12px;
   background: rgba(21, 26, 34, 0.5);
+  /*
+   * Both of these are load-bearing. A grid child defaults to min-width:auto,
+   * which lets it grow wider than its column instead of constraining what is
+   * inside it. The strip then never overflowed, so it never scrolled — it just
+   * ran off the side of a page whose body has overflow:hidden, and the lineage
+   * appeared to stop after the first generation.
+   */
+  min-width: 0;
+  overflow: hidden;
+}
+
+.lineage-head {
+  display: flex;
+  align-items: baseline;
+  gap: 10px;
+  margin-bottom: 8px;
 }
 
 #lineagebar[hidden] {
@@ -367,7 +422,7 @@ body {
 }
 
 .lineage-title {
-  margin: 0 0 8px;
+  margin: 0;
   font-size: 11px;
   font-weight: 640;
   letter-spacing: 0.9px;
@@ -379,9 +434,51 @@ body {
   display: flex;
   align-items: flex-end;
   gap: 10px;
+  min-width: 0;
   overflow-x: auto;
-  padding-bottom: 4px;
+  overflow-y: hidden;
+  /* Keep a horizontal swipe inside the strip rather than triggering the
+     browser's back-navigation gesture. */
+  overscroll-behavior-x: contain;
+  -webkit-overflow-scrolling: touch;
+  padding-bottom: 6px;
   scrollbar-width: thin;
+}
+
+#lineage::-webkit-scrollbar {
+  height: 6px;
+}
+
+#lineage::-webkit-scrollbar-thumb {
+  background: rgba(232, 237, 244, 0.22);
+  border-radius: 999px;
+}
+
+.lineage-close {
+  appearance: none;
+  margin-left: auto;
+  padding: 3px 10px;
+  border: 1px solid var(--line);
+  border-radius: 999px;
+  background: transparent;
+  color: var(--dim);
+  font: inherit;
+  font-size: 12px;
+  cursor: pointer;
+  transition: color 0.15s, border-color 0.15s;
+}
+
+.lineage-close:hover,
+.lineage-close:focus-visible {
+  color: var(--ink);
+  border-color: rgba(232, 237, 244, 0.35);
+  outline: none;
+}
+
+/* The toggle shows whether the panel is open, so it reads as a way back. */
+#lineagetoggle[aria-expanded='true'] {
+  border-color: var(--accent);
+  color: var(--accent);
 }
 
 .lineage-empty {
@@ -449,7 +546,7 @@ body {
  * generation" folding into three lines, the hint into four. Letting the row
  * wrap and giving the hint a line of its own keeps every control tappable.
  */
-#controls {
+#controlrow {
   flex-wrap: wrap;
 }
 
@@ -467,7 +564,7 @@ body {
     display: none;
   }
 
-  #controls {
+  #controlrow {
     justify-content: flex-end;
   }
 
@@ -523,4 +620,14 @@ body {
 .panel-place[data-place='2'] {
   background: rgba(232, 237, 244, 0.72);
   color: #14181f;
+}
+
+.lineage-hint {
+  font-size: 11px;
+  color: rgba(139, 151, 168, 0.6);
+}
+
+/* Only worth saying once there is something to scroll to. */
+#lineagebar[data-scrollable='0'] .lineage-hint {
+  display: none;
 }

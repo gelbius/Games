@@ -262,6 +262,37 @@ for (const scale of [1, 2, 3]) {
 // panel and collides on a phone, where a panel is barely a finger wide — which
 // is exactly how it was reported. Overlap is now asserted at phone sizes, with
 // every badge on screen at once.
+// --------------------------------------------------------------- credits
+const credits = await page.evaluate(() =>
+  [...document.querySelectorAll('#credits a')].map((a) => ({
+    href: a.href,
+    text: a.textContent.replace(/\s+/g, ' ').trim(),
+    target: a.target,
+    rel: a.rel,
+    visible: a.offsetParent !== null,
+  })),
+);
+
+check('there are two credit links', credits.length === 2, `got ${credits.length}`);
+check(
+  'one credits Karl Sims and points at his page',
+  credits.some((c) => c.href === 'https://www.karlsims.com/evolved-virtual-creatures.html' && /Karl Sims/.test(c.text)),
+  credits.map((c) => c.href).join(' '),
+);
+check(
+  'one points at the source repository',
+  credits.some((c) => c.href === 'https://github.com/gelbius/Games'),
+  credits.map((c) => c.href).join(' '),
+);
+check('both credit links are visible', credits.every((c) => c.visible));
+// A link that navigated away would abandon whatever the player has bred.
+check('both open in a new tab', credits.every((c) => c.target === '_blank'), credits.map((c) => c.target).join(','));
+check(
+  'both are safe cross-origin links',
+  credits.every((c) => c.rel.includes('noopener') && c.rel.includes('noreferrer')),
+  credits.map((c) => c.rel).join(' | '),
+);
+
 check('no page errors', errors.length === 0, errors[0] ?? '');
 await page.screenshot({ path: process.argv[2] ?? '/tmp/ui-check.png' });
 await page.close();
@@ -306,6 +337,126 @@ for (const [w, h, name] of [[390, 844, 'iPhone'], [360, 800, 'Android'], [1280, 
   });
 
   check(`badges do not overlap at ${name} (${w}x${h})`, overlaps.length === 0, overlaps[0] ?? '');
+
+  const footerFits = await p.evaluate(() => {
+    const credits = document.querySelector('#credits');
+    const box = credits.getBoundingClientRect();
+    return {
+      inside: box.left >= -0.5 && box.right <= window.innerWidth + 0.5,
+      visible: credits.offsetParent !== null && box.height > 0,
+      noPageScroll: document.documentElement.scrollWidth <= document.documentElement.clientWidth,
+    };
+  });
+  check(`credit links fit on screen at ${name}`, footerFits.inside && footerFits.visible && footerFits.noPageScroll,
+    JSON.stringify(footerFits));
+
+  // ------------------------------------------------- lineage on a small screen
+  // Breed enough generations that the strip cannot possibly fit, which is the
+  // only condition under which the scrolling bug appears. Two generations fit
+  // on any screen, which is why it went unnoticed.
+  await p.evaluate(async () => {
+    const { breed } = await import('./assets/' + [...document.scripts].map((s) => s.src.split('/').pop())[0]).catch(
+      () => ({}),
+    );
+    void breed;
+  });
+  for (let g = 0; g < 10; g++) {
+    await p.evaluate(() => {
+      window.derby.selection.toggle(0);
+      window.derby.selection.toggle(1);
+    });
+    await p.locator('#breed').click();
+    await p.waitForTimeout(120);
+  }
+
+  await p.locator('#lineagetoggle').click();
+  await p.waitForTimeout(250);
+
+  const strip = await p.evaluate(() => {
+    const el = document.querySelector('#lineage');
+    const bar = document.querySelector('#lineagebar');
+    return {
+      steps: el.querySelectorAll('.lineage-step').length,
+      scrollWidth: el.scrollWidth,
+      clientWidth: el.clientWidth,
+      barWithinViewport: bar.getBoundingClientRect().right <= window.innerWidth + 0.5,
+      pageDoesNotScroll: document.documentElement.scrollWidth <= document.documentElement.clientWidth,
+    };
+  });
+
+  check(`lineage recorded ten generations at ${name}`, strip.steps === 10, `${strip.steps} steps`);
+
+  // The invariant that actually matters, and the one a real phone caught: a
+  // long lineage must never make the *page* wider than the screen. #lineagebar
+  // is a grid child, so without min-width:0 it grows to fit its content and
+  // drags the whole app with it — pushing half the creatures and every button
+  // off-screen, unreachable, because the body cannot scroll.
+  check(
+    `a long lineage does not widen the page at ${name}`,
+    strip.barWithinViewport && strip.pageDoesNotScroll,
+    JSON.stringify(strip),
+  );
+  // Overflow only exists when the content genuinely does not fit; on a wide
+  // screen ten generations may sit comfortably side by side.
+  if (strip.scrollWidth > strip.clientWidth) {
+    check(`the lineage strip scrolls rather than being cut off at ${name}`, true);
+  } else {
+    check(`ten generations fit without scrolling at ${name}`, strip.clientWidth >= strip.scrollWidth);
+  }
+
+  // Scrolling it must actually move it, and reach the earliest generation.
+  await p.evaluate(() => {
+    document.querySelector('#lineage').scrollLeft = 0;
+  });
+  const atStart = await p.evaluate(() => {
+    const el = document.querySelector('#lineage');
+    const first = el.querySelector('.lineage-step');
+    return first.getBoundingClientRect().left >= el.getBoundingClientRect().left - 1;
+  });
+  check(`the earliest generation can be scrolled to at ${name}`, atStart);
+
+  // And there must be a way back to the game.
+  await p.locator('#lineageclose').click();
+  await p.waitForTimeout(150);
+  check(
+    `the lineage panel can be closed at ${name}`,
+    await p.evaluate(() => document.querySelector('#lineagebar').hasAttribute('hidden')),
+  );
+  await p.locator('#lineagetoggle').click();
+  await p.keyboard.press('Escape');
+  await p.waitForTimeout(150);
+  check(
+    `Escape closes the lineage panel at ${name}`,
+    await p.evaluate(() => document.querySelector('#lineagebar').hasAttribute('hidden')),
+  );
+  // Every reachable control must be inside the screen, in both states. Half the
+  // interface being off the right edge with no way to scroll to it is what made
+  // this unusable on a phone.
+  for (const [state, open] of [['race', false], ['lineage open', true]]) {
+    await p.evaluate((o) => {
+      const bar = document.querySelector('#lineagebar');
+      bar.toggleAttribute('hidden', !o);
+    }, open);
+    await p.waitForTimeout(120);
+    const offscreen = await p.evaluate(() => {
+      const names = [];
+      for (const el of document.querySelectorAll('#controls button, #controls input, .panel, #credits a')) {
+        const r = el.getBoundingClientRect();
+        if (r.width === 0 && r.height === 0) continue;
+        if (r.right > window.innerWidth + 1 || r.left < -1) {
+          names.push(el.id || el.className || el.tagName);
+        }
+      }
+      return names;
+    });
+    check(`nothing is off-screen at ${name}, ${state}`, offscreen.length === 0, offscreen.slice(0, 3).join(', '));
+  }
+
+  if (name === 'iPhone') {
+    await p.locator('#lineagetoggle').click();
+    await p.waitForTimeout(200);
+    await p.screenshot({ path: '/tmp/ui-lineage-phone.png' });
+  }
   check(`no errors at ${name}`, errs.length === 0, errs[0] ?? '');
   if (name === 'iPhone') await p.screenshot({ path: process.argv[6] ?? '/tmp/ui-phone.png' });
   await p.close();

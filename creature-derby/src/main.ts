@@ -41,6 +41,7 @@ const rateLabel = document.querySelector<HTMLOutputElement>('#ratelabel')!;
 const lineageBar = document.querySelector<HTMLElement>('#lineagebar')!;
 const lineageEl = document.querySelector<HTMLDivElement>('#lineage')!;
 const lineageToggle = document.querySelector<HTMLButtonElement>('#lineagetoggle')!;
+const lineageClose = document.querySelector<HTMLButtonElement>('#lineageclose')!;
 
 /** Plain words for the mutation slider. "0.35" means nothing to anybody. */
 function describeRate(rate: number): string {
@@ -161,11 +162,19 @@ async function main(): Promise<void> {
   });
   rateLabel.textContent = describeRate(mutationRate());
 
-  lineageToggle.addEventListener('click', () => {
-    const showing = lineageBar.hasAttribute('hidden');
-    lineageBar.toggleAttribute('hidden', !showing);
-    lineageToggle.setAttribute('aria-expanded', String(showing));
-  });
+  function showLineage(open: boolean): void {
+    lineageBar.toggleAttribute('hidden', !open);
+    lineageToggle.setAttribute('aria-expanded', String(open));
+    if (open) {
+      // Only offer the swipe hint when there is actually something off-screen.
+      const scrollable = lineageEl.scrollWidth > lineageEl.clientWidth + 4;
+      lineageBar.dataset.scrollable = scrollable ? '1' : '0';
+      lineageEl.scrollLeft = lineageEl.scrollWidth;
+    }
+  }
+
+  lineageToggle.addEventListener('click', () => showLineage(lineageBar.hasAttribute('hidden')));
+  lineageClose.addEventListener('click', () => showLineage(false));
 
   function startRace(genomes: readonly Genome[], inherited: number[] = []): void {
     race.dispose();
@@ -226,6 +235,10 @@ async function main(): Promise<void> {
       replayBtn.click();
     } else if (e.code === 'Enter' && !breedBtn.disabled) {
       breedBtn.click();
+    } else if (e.code === 'Escape' && !lineageBar.hasAttribute('hidden')) {
+      // A panel that covers the game needs an obvious way out, and Escape is
+      // the one people try first.
+      showLineage(false);
     }
   });
 
