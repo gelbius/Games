@@ -62,11 +62,17 @@ function buildPanels(): PanelRefs[] {
     root.dataset.lane = String(i);
     root.setAttribute('aria-pressed', 'false');
     root.setAttribute('aria-label', `creature ${i + 1}`);
+    // Corner readouts stack in a column so the "your pick" badge sits *below*
+    // the distance rather than beside it. Side by side, the two collide on a
+    // phone-width panel. The placing lives separately at the bottom of the
+    // panel, well clear of both.
     root.innerHTML =
+      `<span class="panel-hud">` +
       `<span class="panel-label"><span class="panel-num">${i + 1}</span>` +
-      `<span class="panel-place"></span>` +
       `<span class="panel-dist">0.00m</span></span>` +
-      `<span class="panel-tag"></span>`;
+      `<span class="panel-tag"></span>` +
+      `</span>` +
+      `<span class="panel-place"></span>`;
     gridEl.appendChild(root);
     panels.push({
       root,
