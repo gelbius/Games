@@ -70,20 +70,9 @@ If you already have it, make sure it is up to date:
 
 ```bash
 cd ~/Games      # wherever you keep it
+git checkout main
 git pull
 ```
-
-**If `creature-derby` does not exist yet**, the game is still on a branch that
-has not been merged. Fetch it and switch to it:
-
-```bash
-git fetch origin
-git checkout claude/creature-derby-game-9s85ns
-```
-
-Switching branches swaps the files in the folder, which is why `creature-derby`
-appears and disappears. Nothing is lost either way — `git checkout main` puts it
-back the way it was.
 
 ### Starting it
 
@@ -99,8 +88,9 @@ browser.
 To stop it, press **Ctrl+C** in the terminal.
 
 > **`cd: no such file or directory: creature-derby`** means you are in the wrong
-> folder, or the branch above has not been checked out. Run `pwd` to see where
-> you are: you want to be in `Games`, not in `Games/gotcha`.
+> folder. Run `pwd` to see where you are: you want to be in `Games`, not in
+> `Games/gotcha`. If you are in the right place and the folder still is not
+> there, your copy predates the game — `git checkout main && git pull`.
 
 > **`Could not read package.json`** means the same thing — `npm` was run
 > somewhere that has no Node project in it.
