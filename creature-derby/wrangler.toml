@@ -1,22 +1,38 @@
-# Cloudflare Pages configuration.
+# Cloudflare configuration.
 #
-# This file only records the build output location. The settings that actually
-# matter when connecting the repository in the Cloudflare dashboard are not
-# expressible here and must be entered there:
+# This deploys as a Worker serving static assets, which is what Cloudflare now
+# steers new Git-connected projects toward. Pages still exists, but its "create
+# a Pages project" flow is increasingly hard to find in the dashboard, and
+# static assets on Workers is the supported successor.
 #
-#   Build command          npm run build
-#   Root directory         creature-derby
-#   Build watch paths      creature-derby/*
+# The practical difference for this project is one line: Pages used
+# `pages_build_output_dir`, Workers uses an `[assets]` block. There is no
+# `main` entry below, and that is deliberate — with assets and no script, the
+# Worker serves the built files and runs no code of its own. Creature Derby is
+# entirely a client-side game.
 #
-# The root directory is the one people miss: this repository contains more than
-# one game, so Cloudflare has to be told which folder to build.
+# Settings that cannot be expressed here and must be entered in the dashboard
+# when connecting the repository:
 #
-# The watch path is the one people never set. Without it Cloudflare rebuilds and
-# redeploys this game on every push to the repository, including pushes that
-# only touched a different game entirely.
+#   Build command    npm run build
+#   Path             /creature-derby
+#   Deploy command   npx wrangler deploy
+#
+# `Path` is the one people miss, and it is the reason a first deploy usually
+# fails. This repository holds more than one game, so Cloudflare has to be told
+# which folder to build in; left at `/` it looks in the repository root, finds
+# no package.json, and gives up.
 #
 # See the deployment section of README.md.
 
 name = "creature-derby"
 compatibility_date = "2026-01-01"
-pages_build_output_dir = "dist"
+
+[assets]
+directory = "./dist"
+
+# Serve the game for any path that does not match a file, rather than a bare
+# 404. Every real URL here is either "/" or a hashed asset, so this only ever
+# catches a mistyped address — and landing on the game is friendlier than
+# landing on an error page.
+not_found_handling = "single-page-application"

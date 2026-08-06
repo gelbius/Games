@@ -106,53 +106,73 @@ npm run typecheck  # check the code for mistakes without running it
 
 ---
 
-## Putting it on the internet (Cloudflare Pages)
+## Putting it on the internet (Cloudflare)
 
 The built game is just static files — no server, no database — so hosting it is
 free and simple.
 
+A note first, because it will not match older instructions you may find:
+Cloudflare has merged Workers and Pages. New Git-connected projects go through
+the **Workers** flow and static sites deploy as *Workers Static Assets*, which
+is the supported successor to Pages. Pages still exists, but its "create a
+project" path is increasingly buried. The steps below are the Workers flow.
+
 **1. Push this repository to GitHub**, if it is not there already.
 
-**2. Go to the Cloudflare dashboard** at <https://dash.cloudflare.com>, and
-choose **Workers & Pages** → **Create** → **Pages** → **Connect to Git**.
+**2. Go to the Cloudflare dashboard** at <https://dash.cloudflare.com>, choose
+**Workers & Pages** → **Create**, and connect your GitHub account.
 
-**3. Pick this repository**, then enter these build settings *exactly*:
+When GitHub asks which repositories to authorise, choose **Only select
+repositories** and pick just this one. The permission being granted is read
+*and write*, and "All repositories" would extend it to every repository you
+create in future, automatically.
+
+**3. Pick this repository**, then set:
 
 | Setting | Value |
 | --- | --- |
-| Framework preset | `None` |
+| Project name | `creature-derby` |
 | Build command | `npm run build` |
-| Build output directory | `dist` |
-| Root directory | `creature-derby` |
+| Deploy command | `npx wrangler deploy` |
+| **Path** (under Advanced settings) | `/creature-derby` |
 
-The **root directory** is the one people miss. This repository holds more than
-one game, so Cloudflare has to be told which folder to build.
+**Path is the one that matters and the one that is hidden.** It lives under
+*Advanced settings*, defaults to `/`, and is the root-directory equivalent.
+This repository holds more than one game, so Cloudflare has to be told which
+folder to build in. Left at `/` it looks in the repository root, finds no
+`package.json`, and the build fails immediately.
 
-**4. Press Save and Deploy.** A couple of minutes later you will have a URL like
-`creature-derby.pages.dev`. Every push to your default branch redeploys it.
+There is no "build output directory" field in this flow. That now comes from
+`wrangler.toml`, which already declares it.
+
+Make the project name match the `name` in `wrangler.toml`, or `wrangler deploy`
+will publish to a differently-named Worker than the project you are looking at.
+
+**4. Press Deploy.** A couple of minutes later you will have a URL like
+`creature-derby.workers.dev`. Every push to your default branch redeploys it.
 
 **5. Stop it rebuilding for the other games.** By default Cloudflare redeploys
 on *every* push to the repository — including pushes that only touched Gotcha
-and cannot possibly have changed this game. Harmless, but noisy, and it burns
-build minutes.
+and cannot possibly have changed this game. Harmless, but noisy, and it spends
+build minutes on nothing.
 
-In your new Pages project, go to **Settings → Builds & deployments → Build watch
-paths**, and set:
+In the project's **Settings → Builds**, look for **Build watch paths** and set
+the include path to `creature-derby/*`. Builds then only trigger when this
+folder actually changes.
 
-| Field | Value |
-| --- | --- |
-| Include paths | `creature-derby/*` |
-
-Builds now only trigger when this folder actually changes. Cloudflare
-occasionally moves this setting around the dashboard; if you cannot find it,
-search their docs for "build watch paths".
+Cloudflare moves these settings around the dashboard fairly often. If a field
+described here is not where it says, search their docs for its name rather than
+guessing — and the shape of what is needed does not change even when the
+furniture does: build in `creature-derby`, publish `dist`, watch
+`creature-derby/*`.
 
 ### If the build fails
 
 There is nothing else to configure — no environment variables, no secrets, no
 database. The log will almost always point at one of two things:
 
-- **"root directory"** — step 3 above was missed or misspelled.
+- **A missing `package.json`** — the **Path** in step 3 was left at `/` or
+  misspelled. This is by far the most common cause.
 - **Node version** — Cloudflare's default is usually fine, but you can pin it by
   adding an environment variable `NODE_VERSION` set to `20`.
 
