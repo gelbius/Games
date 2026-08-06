@@ -1,0 +1,22 @@
+# Cloudflare Pages configuration.
+#
+# This file only records the build output location. The settings that actually
+# matter when connecting the repository in the Cloudflare dashboard are not
+# expressible here and must be entered there:
+#
+#   Build command          npm run build
+#   Root directory         creature-derby
+#   Build watch paths      creature-derby/*
+#
+# The root directory is the one people miss: this repository contains more than
+# one game, so Cloudflare has to be told which folder to build.
+#
+# The watch path is the one people never set. Without it Cloudflare rebuilds and
+# redeploys this game on every push to the repository, including pushes that
+# only touched a different game entirely.
+#
+# See the deployment section of README.md.
+
+name = "creature-derby"
+compatibility_date = "2026-01-01"
+pages_build_output_dir = "dist"

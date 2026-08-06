@@ -1,0 +1,52 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Creature Derby</title>
+    <link
+      rel="icon"
+      href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 16 16'><text y='14' font-size='14'>%F0%9F%90%9B</text></svg>"
+    />
+    <link rel="stylesheet" href="/src/style.css" />
+  </head>
+  <body>
+    <div id="app">
+      <header id="top">
+        <div class="brand">
+          <span class="mark">🐛</span>
+          <span class="name">Creature Derby</span>
+        </div>
+        <div id="generation" class="stat"><span class="k">generation</span> <b>1</b></div>
+        <div id="clock" class="stat"><span class="k">time</span> <b>0.0s</b></div>
+        <div id="timerbar"><div id="timerfill"></div></div>
+      </header>
+
+      <main id="stagewrap">
+        <canvas id="stage"></canvas>
+        <div id="grid"><!-- panels injected here --></div>
+        <div id="boot">loading physics…</div>
+      </main>
+
+      <section id="lineagebar" hidden>
+        <h2 class="lineage-title">Lineage</h2>
+        <div id="lineage"></div>
+      </section>
+
+      <footer id="controls">
+        <div id="hint">the race is running</div>
+        <div class="spacer"></div>
+        <label id="mutation" title="How much the offspring differ from their parents">
+          <span class="k">mutation</span>
+          <input id="rate" type="range" min="0" max="100" value="35" />
+          <output id="ratelabel">tame</output>
+        </label>
+        <button id="share" class="btn" disabled title="Copy a link to the creature you picked first">Share</button>
+        <button id="lineagetoggle" class="btn" aria-expanded="false">Lineage</button>
+        <button id="replay" class="btn">Replay</button>
+        <button id="breed" class="btn primary" disabled>Breed the next generation</button>
+      </footer>
+    </div>
+    <script type="module" src="/src/main.ts"></script>
+  </body>
+</html>
