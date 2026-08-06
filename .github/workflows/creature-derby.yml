@@ -38,7 +38,12 @@ jobs:
 
       - uses: actions/setup-node@v4
         with:
-          node-version: 20
+          # 22, not 20. The unit tests are TypeScript and run through Node's
+          # own type stripping, which does not exist before 22.6 — on Node 20
+          # they fail instantly with ERR_UNKNOWN_FILE_EXTENSION. Cloudflare
+          # builds this fine on 20 because building only needs tsc and vite;
+          # running the tests is what needs the newer runtime.
+          node-version: 22
           cache: npm
           cache-dependency-path: creature-derby/package-lock.json
 

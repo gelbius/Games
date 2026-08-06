@@ -6,7 +6,7 @@
   "license": "MIT",
   "description": "Breed racing creatures. A browser homage to Karl Sims' Evolving Virtual Creatures.",
   "engines": {
-    "node": ">=20"
+    "node": ">=22"
   },
   "scripts": {
     "dev": "vite",

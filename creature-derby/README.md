@@ -54,8 +54,9 @@ what the sender saw, on any machine.
 
 ## Running it on your own computer
 
-You will need [Node.js](https://nodejs.org/) version 20 or newer. Everything
-below is typed into a terminal.
+You will need [Node.js](https://nodejs.org/) version 22 or newer. The tests are
+TypeScript and run through Node's own type stripping, which older versions do
+not have. Everything below is typed into a terminal.
 
 ### Getting the code
 
@@ -173,8 +174,8 @@ database. The log will almost always point at one of two things:
 
 - **A missing `package.json`** — the **Path** in step 3 was left at `/` or
   misspelled. This is by far the most common cause.
-- **Node version** — Cloudflare's default is usually fine, but you can pin it by
-  adding an environment variable `NODE_VERSION` set to `20`.
+- **Node version** — Cloudflare's default is usually fine for building, but you
+  can pin it by adding an environment variable `NODE_VERSION` set to `22`.
 
 ---
 
