@@ -180,6 +180,9 @@ check(
   await page2.evaluate(() => location.hash === ''),
 );
 check('shared link page has no errors', errors2.length === 0, errors2[0] ?? '');
+// Close it: every open page keeps eight WebGL scenes rendering, and leaving
+// them running starves whatever runs next of frames.
+await page2.close();
 
 // A mangled link must not stop the game loading.
 const page3 = await browser.newPage({ viewport: { width: 800, height: 600 } });
@@ -190,6 +193,7 @@ await page3.waitForFunction('window.derby && window.derby.race.lanes.length === 
 check('a broken link still starts the game', (await page3.locator('.panel').count()) === 8);
 check('a broken link says so', ((await page3.locator('#hint').textContent()) ?? '').includes('readable'));
 check('broken link page has no errors', errors3.length === 0, errors3[0] ?? '');
+await page3.close();
 
 // An empty lineage should explain itself rather than be a blank strip.
 const page4 = await browser.newPage({ viewport: { width: 1280, height: 800 } });
@@ -199,6 +203,7 @@ await page4.locator('#lineagetoggle').click();
 const emptyText = (await page4.locator('.lineage-empty').textContent()) ?? '';
 check('an empty lineage explains itself', emptyText.includes('Pick two'), `got "${emptyText.slice(0, 40)}"`);
 check('the empty message is actually visible', await page4.locator('.lineage-empty').isVisible());
+await page4.close();
 
 // ------------------------------------------------- retina / pixel ratio
 // This exists because a real bug shipped past every other check in this file.
@@ -252,7 +257,59 @@ for (const scale of [1, 2, 3]) {
   await p.close();
 }
 
+// --------------------------------------------------------- phone layout
+// The badges used to sit in opposite top corners. That is fine on a desktop
+// panel and collides on a phone, where a panel is barely a finger wide — which
+// is exactly how it was reported. Overlap is now asserted at phone sizes, with
+// every badge on screen at once.
 check('no page errors', errors.length === 0, errors[0] ?? '');
+await page.screenshot({ path: process.argv[2] ?? '/tmp/ui-check.png' });
+await page.close();
+
+for (const [w, h, name] of [[390, 844, 'iPhone'], [360, 800, 'Android'], [1280, 800, 'desktop']]) {
+  const p = await browser.newPage({ viewport: { width: w, height: h }, deviceScaleFactor: 2 });
+  const errs = [];
+  p.on('pageerror', (e) => errs.push(e.message));
+  await p.goto(`http://localhost:${port}/`, { waitUntil: 'load' });
+  await p.waitForFunction('window.derby && window.derby.race.lanes.length === 8');
+
+  // Force every badge visible at once: breed so two are marked "your pick",
+  // then wait for the placings to appear.
+  await p.evaluate(() => window.derby.selection.setInherited([0, 1]));
+  await p.waitForFunction('window.derby.race.lanes.some((l) => l.distance > 0.1)', null, { timeout: 25000 });
+  await p.waitForTimeout(500);
+
+  const overlaps = await p.evaluate(() => {
+    const hit = (a, b) =>
+      a.left < b.right - 0.5 && b.left < a.right - 0.5 && a.top < b.bottom - 0.5 && b.top < a.bottom - 0.5;
+    const problems = [];
+    for (const panel of document.querySelectorAll('.panel')) {
+      const parts = ['.panel-label', '.panel-tag', '.panel-place']
+        .map((sel) => ({ sel, el: panel.querySelector(sel) }))
+        .filter((x) => x.el && x.el.offsetParent !== null)
+        .map((x) => ({ sel: x.sel, box: x.el.getBoundingClientRect() }));
+
+      for (let i = 0; i < parts.length; i++) {
+        for (let j = i + 1; j < parts.length; j++) {
+          if (hit(parts[i].box, parts[j].box)) problems.push(`${parts[i].sel} over ${parts[j].sel}`);
+        }
+      }
+      // Nothing may spill outside its own panel either.
+      const bounds = panel.getBoundingClientRect();
+      for (const part of parts) {
+        if (part.box.left < bounds.left - 0.5 || part.box.right > bounds.right + 0.5) {
+          problems.push(`${part.sel} wider than its panel`);
+        }
+      }
+    }
+    return problems;
+  });
+
+  check(`badges do not overlap at ${name} (${w}x${h})`, overlaps.length === 0, overlaps[0] ?? '');
+  check(`no errors at ${name}`, errs.length === 0, errs[0] ?? '');
+  if (name === 'iPhone') await p.screenshot({ path: process.argv[6] ?? '/tmp/ui-phone.png' });
+  await p.close();
+}
 
 let failed = 0;
 for (const c of checks) {
@@ -261,7 +318,6 @@ for (const c of checks) {
 }
 console.log(`\n${checks.length - failed}/${checks.length} passed`);
 
-await page.screenshot({ path: process.argv[2] ?? '/tmp/ui-check.png' });
 await browser.close();
 server.close();
 process.exit(failed ? 1 : 0);
