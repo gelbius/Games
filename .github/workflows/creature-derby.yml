@@ -31,7 +31,12 @@ defaults:
 jobs:
   checks:
     runs-on: ubuntu-latest
-    timeout-minutes: 15
+    # Generous, because this clock appears to start when the job is queued
+    # rather than when it gets a machine. An earlier run was cancelled at
+    # exactly 15m03s against a 15-minute limit having never been assigned a
+    # runner at all. The work itself takes about three minutes; the rest is
+    # headroom for GitHub being slow to hand one out.
+    timeout-minutes: 30
 
     steps:
       - uses: actions/checkout@v4
