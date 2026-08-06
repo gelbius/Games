@@ -1,0 +1,79 @@
+# Checks for Creature Derby.
+#
+# Scoped with `paths` so a push that only touches another game in this
+# repository does not run these — the same reason the Cloudflare project has a
+# build watch path. The workflow file itself is included, so a change to the CI
+# is tested by the CI.
+
+name: Creature Derby
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - 'creature-derby/**'
+      - '.github/workflows/creature-derby.yml'
+  pull_request:
+    paths:
+      - 'creature-derby/**'
+      - '.github/workflows/creature-derby.yml'
+  workflow_dispatch:
+
+# A second push to the same branch makes the first run irrelevant.
+concurrency:
+  group: creature-derby-${{ github.ref }}
+  cancel-in-progress: true
+
+defaults:
+  run:
+    working-directory: creature-derby
+
+jobs:
+  checks:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+          cache-dependency-path: creature-derby/package-lock.json
+
+      - run: npm ci
+
+      - name: Types
+        run: npm run typecheck
+
+      - name: Unit tests
+        run: npm test
+
+      - name: Build
+        run: npx vite build
+
+      # Only Chromium, and only its dependencies — the browser checks never use
+      # Firefox or WebKit, and downloading them triples the setup time.
+      - name: Install Chromium
+        run: npx playwright install --with-deps chromium
+
+      # The interface checks: selection, breeding, sharing, the lineage strip,
+      # and the layout at three pixel ratios and three screen sizes.
+      - name: Interface checks
+        run: node tools/ui-check.mjs
+
+      # One full race through the broadcast camera, asserting it never loses a
+      # creature out of frame. Kept to a single run because it is wall-clock
+      # bound rather than CPU bound.
+      - name: Camera check
+        run: node tools/camera-check.mjs 1 15
+
+      - name: Upload screenshots on failure
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: screenshots
+          path: /tmp/ui-*.png
+          if-no-files-found: ignore
+          retention-days: 7

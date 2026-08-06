@@ -7,7 +7,7 @@
  * This exists so changes can be checked without a human watching a browser.
  * It is a development tool, not part of the shipped game.
  */
-import { chromium } from 'playwright';
+import { launchBrowser } from './browser.mjs';
 import { createServer } from 'node:http';
 import { readFile, stat } from 'node:fs/promises';
 import { join, extname, normalize } from 'node:path';
@@ -43,10 +43,7 @@ const port = server.address().port;
 
 // Use the browser preinstalled in this environment rather than downloading one.
 // Software GL (swiftshader) because there is no GPU here.
-const browser = await chromium.launch({
-  executablePath: process.env.CHROMIUM_PATH ?? '/opt/pw-browsers/chromium-1194/chrome-linux/chrome',
-  args: ['--use-gl=angle', '--use-angle=swiftshader', '--enable-unsafe-swiftshader', '--no-sandbox'],
-});
+const browser = await launchBrowser();
 const page = await browser.newPage({ viewport: { width: 1280, height: 800 } });
 
 const logs = [];

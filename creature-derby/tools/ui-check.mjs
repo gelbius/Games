@@ -7,7 +7,7 @@
  *
  * Usage: node tools/ui-check.mjs
  */
-import { chromium } from 'playwright';
+import { launchBrowser } from './browser.mjs';
 import { createServer } from 'node:http';
 import { readFile, stat } from 'node:fs/promises';
 import { join, extname, normalize } from 'node:path';
@@ -29,10 +29,28 @@ const server = createServer(async (req, res) => {
 await new Promise((r) => server.listen(0, r));
 const port = server.address().port;
 
-const browser = await chromium.launch({
-  executablePath: process.env.CHROMIUM_PATH ?? '/opt/pw-browsers/chromium-1194/chrome-linux/chrome',
-  args: ['--use-gl=angle', '--use-angle=swiftshader', '--enable-unsafe-swiftshader', '--no-sandbox'],
-});
+const browser = await launchBrowser();
+
+/**
+ * A page that has already seen the intro.
+ *
+ * Every newPage() gets its own storage, so without this the first-visit panel
+ * opens on each one and swallows the clicks of checks that are about something
+ * else entirely. Only the first page below is left untouched, because that is
+ * the one testing the intro itself.
+ */
+async function newPage(options) {
+  const p = await browser.newPage(options);
+  await p.addInitScript(() => {
+    try {
+      localStorage.setItem('derby.intro.seen', '1');
+    } catch {
+      /* storage blocked; the intro will show and the check will say so */
+    }
+  });
+  return p;
+}
+
 const page = await browser.newPage({ viewport: { width: 1280, height: 800 } });
 
 const errors = [];
@@ -43,6 +61,47 @@ await page.waitForSelector('.panel');
 
 const checks = [];
 const check = (name, ok, detail = '') => checks.push({ name, ok, detail });
+
+// ------------------------------------------------------------------- intro
+// A first-time visitor gets an explanation; a returning one does not. The
+// whole point is that it appears once and then stays out of the way.
+const introOpen = () => page.evaluate(() => document.querySelector('#intro').open);
+
+check('the intro appears on a first visit', await introOpen());
+check(
+  'it says what the player is looking at',
+  /invented/i.test((await page.locator('#introtitle').textContent()) ?? ''),
+  (await page.locator('#introtitle').textContent()) ?? '',
+);
+check('it gives three steps', (await page.locator('.intro-steps li').count()) === 3);
+
+await page.locator('#introgo').click();
+await page.waitForTimeout(200);
+check('the start button closes it', !(await introOpen()));
+
+// Reopening on demand, for anyone who dismissed it and wants it back.
+await page.locator('#help').click();
+await page.waitForTimeout(150);
+check('the "i" button brings it back', await introOpen());
+await page.keyboard.press('Escape');
+await page.waitForTimeout(150);
+check('Escape closes it', !(await introOpen()));
+
+// The part that matters: it must not come back on refresh.
+await page.reload({ waitUntil: 'load' });
+await page.waitForSelector('.panel');
+await page.waitForTimeout(400);
+check('it does not reappear after a refresh', !(await introOpen()));
+check('the game still runs after a refresh', (await page.locator('.panel').count()) === 8);
+
+// And clearing the flag brings it back for a genuinely new visitor.
+await page.evaluate(() => window.derby.forgetIntro());
+await page.reload({ waitUntil: 'load' });
+await page.waitForSelector('.panel');
+await page.waitForTimeout(400);
+check('a new visitor sees it again', await introOpen());
+await page.locator('#introgo').click();
+await page.waitForTimeout(200);
 
 const selectedCount = () => page.locator('.panel[data-selected="1"]').count();
 const breedDisabled = () => page.locator('#breed').isDisabled();
@@ -167,7 +226,7 @@ const sharedGenome = await page.evaluate(() =>
   JSON.stringify(window.derby.race.lanes[window.derby.selection.chosen[0]].genome),
 );
 
-const page2 = await browser.newPage({ viewport: { width: 1280, height: 800 } });
+const page2 = await newPage({ viewport: { width: 1280, height: 800 } });
 const errors2 = [];
 page2.on('pageerror', (e) => errors2.push(e.message));
 await page2.goto(link, { waitUntil: 'load' });
@@ -185,7 +244,7 @@ check('shared link page has no errors', errors2.length === 0, errors2[0] ?? '');
 await page2.close();
 
 // A mangled link must not stop the game loading.
-const page3 = await browser.newPage({ viewport: { width: 800, height: 600 } });
+const page3 = await newPage({ viewport: { width: 800, height: 600 } });
 const errors3 = [];
 page3.on('pageerror', (e) => errors3.push(e.message));
 await page3.goto(`${link.split('#')[0]}#c=thisIsNotAGenome`, { waitUntil: 'load' });
@@ -196,7 +255,7 @@ check('broken link page has no errors', errors3.length === 0, errors3[0] ?? '');
 await page3.close();
 
 // An empty lineage should explain itself rather than be a blank strip.
-const page4 = await browser.newPage({ viewport: { width: 1280, height: 800 } });
+const page4 = await newPage({ viewport: { width: 1280, height: 800 } });
 await page4.goto(`http://localhost:${port}/`, { waitUntil: 'load' });
 await page4.waitForSelector('.panel');
 await page4.locator('#lineagetoggle').click();
@@ -214,7 +273,7 @@ await page4.close();
 // which is exactly why it survived. The layout is now asserted at 2x and 3x
 // too.
 for (const scale of [1, 2, 3]) {
-  const p = await browser.newPage({ viewport: { width: 1280, height: 800 }, deviceScaleFactor: scale });
+  const p = await newPage({ viewport: { width: 1280, height: 800 }, deviceScaleFactor: scale });
   const errs = [];
   p.on('pageerror', (e) => errs.push(e.message));
   await p.goto(`http://localhost:${port}/`, { waitUntil: 'load' });
@@ -298,7 +357,7 @@ await page.screenshot({ path: process.argv[2] ?? '/tmp/ui-check.png' });
 await page.close();
 
 for (const [w, h, name] of [[390, 844, 'iPhone'], [360, 800, 'Android'], [1280, 800, 'desktop']]) {
-  const p = await browser.newPage({ viewport: { width: w, height: h }, deviceScaleFactor: 2 });
+  const p = await newPage({ viewport: { width: w, height: h }, deviceScaleFactor: 2 });
   const errs = [];
   p.on('pageerror', (e) => errs.push(e.message));
   await p.goto(`http://localhost:${port}/`, { waitUntil: 'load' });

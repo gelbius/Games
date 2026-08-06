@@ -631,3 +631,113 @@ body {
 #lineagebar[data-scrollable='0'] .lineage-hint {
   display: none;
 }
+
+/* -------------------------------------------------------------------- intro */
+
+/*
+ * Shown once, on a first visit. The game opens on eight nameless boxes
+ * flailing at nothing, and the honest first reaction to that is "what am I
+ * looking at" — which is exactly the reaction it got. This answers that in
+ * about fifteen seconds of reading and then gets out of the way permanently.
+ *
+ * A native <dialog> rather than a hand-rolled overlay: Escape, the backdrop,
+ * focus trapping and inertness of the page behind all come for free and all
+ * behave the way people already expect.
+ */
+#intro {
+  width: min(520px, calc(100vw - 32px));
+  max-height: min(78vh, 620px);
+  overflow-y: auto;
+  padding: 26px 26px 20px;
+  border: 1px solid var(--line);
+  border-radius: 14px;
+  background: var(--panel);
+  color: var(--ink);
+  box-shadow: 0 24px 60px rgba(0, 0, 0, 0.55);
+}
+
+#intro::backdrop {
+  background: rgba(8, 10, 14, 0.72);
+  backdrop-filter: blur(2px);
+}
+
+#introtitle {
+  margin: 0 0 10px;
+  font-size: 20px;
+  line-height: 1.25;
+  letter-spacing: -0.2px;
+}
+
+.intro-lede {
+  margin: 0 0 16px;
+  color: var(--dim);
+  font-size: 14px;
+}
+
+.intro-steps {
+  margin: 0 0 16px;
+  padding-left: 20px;
+  display: flex;
+  flex-direction: column;
+  gap: 7px;
+  font-size: 14px;
+}
+
+.intro-steps b {
+  font-weight: 650;
+}
+
+.intro-steps::marker {
+  color: var(--dim);
+}
+
+.intro-note {
+  margin: 0 0 20px;
+  padding: 11px 13px;
+  border-left: 2px solid var(--accent);
+  background: rgba(111, 211, 199, 0.07);
+  border-radius: 0 8px 8px 0;
+  color: var(--dim);
+  font-size: 13px;
+}
+
+#introgo {
+  width: 100%;
+  padding: 11px;
+  font-size: 15px;
+}
+
+.intro-credit {
+  margin: 14px 0 0;
+  text-align: center;
+  font-size: 12px;
+  color: rgba(139, 151, 168, 0.7);
+}
+
+/* The way back in, for anyone who dismissed it and wants the context again. */
+.iconbtn {
+  margin-left: auto;
+  display: grid;
+  place-items: center;
+  width: 24px;
+  height: 24px;
+  padding: 0;
+  border: 1px solid var(--line);
+  border-radius: 999px;
+  background: transparent;
+  color: var(--dim);
+  font: inherit;
+  font-size: 12px;
+  font-weight: 700;
+  font-style: italic;
+  line-height: 1;
+  cursor: pointer;
+  transition: color 0.15s, border-color 0.15s;
+}
+
+.iconbtn:hover,
+.iconbtn:focus-visible {
+  color: var(--accent);
+  border-color: var(--accent);
+  outline: none;
+}

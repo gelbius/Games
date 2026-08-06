@@ -19,6 +19,9 @@
         </div>
         <div id="generation" class="stat"><span class="k">generation</span> <b>1</b></div>
         <div id="clock" class="stat"><span class="k">time</span> <b>0.0s</b></div>
+        <button id="help" class="iconbtn" type="button" title="What is this?" aria-label="What is this?">
+          i
+        </button>
         <div id="timerbar"><div id="timerfill"></div></div>
       </header>
 
@@ -27,6 +30,25 @@
         <div id="grid"><!-- panels injected here --></div>
         <div id="boot">loading physics…</div>
       </main>
+
+      <dialog id="intro" aria-labelledby="introtitle">
+        <h2 id="introtitle">Eight animals that have just been invented</h2>
+        <p class="intro-lede">
+          A computer made up their bodies from nothing. None of them knows how to walk — every
+          one is just wiggling, and some of them happen to wiggle forward.
+        </p>
+        <ol class="intro-steps">
+          <li><b>Watch</b> them race for fifteen seconds.</li>
+          <li><b>Pick two</b> you like. Tap any two panels.</li>
+          <li><b>Breed them.</b> Their children race next.</li>
+        </ol>
+        <p class="intro-note">
+          There is no score and nothing is trying to win. Whatever you choose for is what they
+          slowly become — so pick the fastest, or the strangest, or the ones with the most legs.
+        </p>
+        <button id="introgo" class="btn primary" type="button" autofocus>Start watching</button>
+        <p class="intro-credit">After Karl Sims, <i>Evolving Virtual Creatures</i>, 1994</p>
+      </dialog>
 
       <section id="lineagebar" hidden>
         <div class="lineage-head">
