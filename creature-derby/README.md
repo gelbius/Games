@@ -103,10 +103,30 @@ one game, so Cloudflare has to be told which folder to build.
 **4. Press Save and Deploy.** A couple of minutes later you will have a URL like
 `creature-derby.pages.dev`. Every push to your default branch redeploys it.
 
-There is nothing to configure afterwards — no environment variables, no secrets,
-no database. If the build fails, the log will almost always say either "root
-directory" or "Node version"; Cloudflare's default Node is usually fine, but you
-can pin it by setting an environment variable `NODE_VERSION` to `20`.
+**5. Stop it rebuilding for the other games.** By default Cloudflare redeploys
+on *every* push to the repository — including pushes that only touched Gotcha
+and cannot possibly have changed this game. Harmless, but noisy, and it burns
+build minutes.
+
+In your new Pages project, go to **Settings → Builds & deployments → Build watch
+paths**, and set:
+
+| Field | Value |
+| --- | --- |
+| Include paths | `creature-derby/*` |
+
+Builds now only trigger when this folder actually changes. Cloudflare
+occasionally moves this setting around the dashboard; if you cannot find it,
+search their docs for "build watch paths".
+
+### If the build fails
+
+There is nothing else to configure — no environment variables, no secrets, no
+database. The log will almost always point at one of two things:
+
+- **"root directory"** — step 3 above was missed or misspelled.
+- **Node version** — Cloudflare's default is usually fine, but you can pin it by
+  adding an environment variable `NODE_VERSION` set to `20`.
 
 ---
 
